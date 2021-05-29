@@ -49,6 +49,7 @@
     "eslint-plugin-react": "^7.20.5",
     "eslint-plugin-react-hooks": "^4.0.8",
     "eslint-webpack-plugin": "^2.1.0",
+    "gl-matrix": "^3.3.0",
     "istanbul-reports": "^3.0.2",
     "jest-puppeteer": "^4.4.0",
     "moment": "^2.29.1",
