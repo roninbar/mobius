@@ -4,6 +4,8 @@ import { mat4 } from 'gl-matrix';
 import React, { useEffect, useRef } from 'react';
 import './App.scss';
 
+const glsl = ([s]: TemplateStringsArray): string => s;
+
 export default function App() {
 
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -62,7 +64,7 @@ export default function App() {
 
     mat4.translate(modelViewMatrix, // destination matrix
       modelViewMatrix,              // matrix to translate
-      [-0.0, 0.0, -6.0]);            // amount to translate
+      [-0.0, 0.0, -4.0]);            // amount to translate
 
     const { buffer, count } = makeStrip(gl);
 
@@ -91,8 +93,6 @@ export default function App() {
     </div>
   )
 }
-
-const glsl = ([s]: TemplateStringsArray): string => s;
 
 function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: number } {
   const epsilon = 0.001;
@@ -125,21 +125,18 @@ function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: num
 }
 
 function initShaderProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
-  
-  const vertexShader = makeShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fragmentShader = makeShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
   const program = gl.createProgram();
 
   if (!program) {
     throw new Error('Failed to create program.');
   }
 
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
+  gl.attachShader(program, makeShader(gl, gl.VERTEX_SHADER, vsSource));
+  gl.attachShader(program, makeShader(gl, gl.FRAGMENT_SHADER, fsSource));
   gl.linkProgram(program);
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    gl.deleteProgram(program);
     throw new Error(`Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`);
   }
 
@@ -147,7 +144,6 @@ function initShaderProgram(gl: WebGLRenderingContext, vsSource: string, fsSource
 }
 
 function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
-
   const shader = gl.createShader(type);
 
   if (!shader) {
