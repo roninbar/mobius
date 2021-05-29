@@ -4,79 +4,7 @@ import { mat4 } from 'gl-matrix';
 import React, { useEffect, useRef } from 'react';
 import './App.scss';
 
-const glsl = ([s]: TemplateStringsArray): string => s;
-
-function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: number } {
-  const epsilon = 0.001;
-  const nTwists = 3;
-  const step = Math.PI / 30.0;
-  const R = 1.0; const h = 0.1;
-  const torsion = 0;
-  const positions: number[] = [];
-  for (let i = 0; i < 2; i++) {
-    for (let s = 0.0; s < 1.0 + epsilon; s += step / Math.PI) {
-      const t = (i + s) * Math.PI;
-      const tt = nTwists * 0.5 * t - torsion;
-      const ct = Math.cos(t); const st = Math.sin(t);
-      const ctt = Math.cos(tt); const stt = Math.sin(tt);
-      const r1 = R - h * ctt;
-      const r2 = R + h * ctt;
-      const z1 = -h * stt;
-      const z2 = +h * stt;
-      positions.push(r2 * st, r2 * ct, z2);
-      positions.push(r1 * st, r1 * ct, z1);
-    }
-  }
-  const buffer = gl.createBuffer();
-  if (!buffer) {
-    throw new Error('Failed to create buffer.');
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-  return { buffer, count: positions.length / 3 };
-}
-
-function loadShader(gl: WebGLRenderingContext, type: number, source: string) {
-
-  const shader = gl.createShader(type);
-
-  if (!shader) {
-    throw new Error('Failed to create shader.');
-  }
-
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    gl.deleteShader(shader);
-    throw new Error(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
-  }
-
-  return shader;
-}
-
-function initShaderProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
-  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-  const shaderProgram = gl.createProgram();
-
-  if (!shaderProgram) {
-    throw new Error('Failed to create program.');
-  }
-
-  gl.attachShader(shaderProgram, vertexShader);
-  gl.attachShader(shaderProgram, fragmentShader);
-  gl.linkProgram(shaderProgram);
-
-  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-    throw new Error(`Unable to initialize the shader program: ${gl.getProgramInfoLog(shaderProgram)}`);
-  }
-
-  return shaderProgram;
-}
-
-function App() {
+export default function App() {
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -164,4 +92,76 @@ function App() {
   )
 }
 
-export default App
+const glsl = ([s]: TemplateStringsArray): string => s;
+
+function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: number } {
+  const epsilon = 0.001;
+  const nTwists = 3;
+  const step = Math.PI / 30.0;
+  const R = 1.0; const h = 0.1;
+  const torsion = 0;
+  const positions: number[] = [];
+  for (let i = 0; i < 2; i++) {
+    for (let s = 0.0; s < 1.0 + epsilon; s += step / Math.PI) {
+      const t = (i + s) * Math.PI;
+      const tt = nTwists * 0.5 * t - torsion;
+      const ct = Math.cos(t); const st = Math.sin(t);
+      const ctt = Math.cos(tt); const stt = Math.sin(tt);
+      const r1 = R - h * ctt;
+      const r2 = R + h * ctt;
+      const z1 = -h * stt;
+      const z2 = +h * stt;
+      positions.push(r2 * st, r2 * ct, z2);
+      positions.push(r1 * st, r1 * ct, z1);
+    }
+  }
+  const buffer = gl.createBuffer();
+  if (!buffer) {
+    throw new Error('Failed to create buffer.');
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+  return { buffer, count: positions.length / 3 };
+}
+
+function initShaderProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
+  
+  const vertexShader = makeShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fragmentShader = makeShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+  const program = gl.createProgram();
+
+  if (!program) {
+    throw new Error('Failed to create program.');
+  }
+
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(`Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`);
+  }
+
+  return program;
+}
+
+function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
+
+  const shader = gl.createShader(type);
+
+  if (!shader) {
+    throw new Error('Failed to create shader.');
+  }
+
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    gl.deleteShader(shader);
+    throw new Error(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
+  }
+
+  return shader;
+}
+
