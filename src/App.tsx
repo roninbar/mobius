@@ -14,68 +14,41 @@ export default function App() {
     const gl = canvas.current?.getContext('webgl');
 
     if (!gl) {
-      return;
+      throw new Error('Failed to get a WebGL context.');
     }
 
-    const vsSource = glsl`
-      attribute vec4 aVertexPosition;
-      uniform mat4 uModelViewMatrix;
-      uniform mat4 uProjectionMatrix;
-      void main() {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-      }
-    `;
-
-    const fsSource = glsl`
-      void main() {
-        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
-      }
-    `;
-
-    const program = initShaderProgram(gl, vsSource, fsSource);
-
-    const aVertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
-    const uModelViewMatrix = gl.getUniformLocation(program, 'uModelViewMatrix');
-    const uProjectionMatrix = gl.getUniformLocation(program, 'uProjectionMatrix');
+    const program = buildProgram(
+      gl,
+      glsl`
+        attribute vec4 aVertexPosition;
+        uniform mat4 uModelViewMatrix;
+        uniform mat4 uProjectionMatrix;
+        void main() {
+          gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+        }
+      `,
+      glsl`
+        void main() {
+          gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        }
+      `,
+    );
 
     gl.useProgram(program);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, makeModelViewMatrix());
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height));
+
+    const { buffer, count } = makeStrip(gl);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
 
     gl.clearColor(0, 0, 0, 1);
     gl.clearDepth(1.0);                 // Clear everything
     gl.enable(gl.DEPTH_TEST);           // Enable depth testing
     gl.depthFunc(gl.LEQUAL);            // Near things obscure far things
-
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    const fieldOfView = Math.PI / 4;
-    const aspect = gl.canvas.width / gl.canvas.height;
-    const zNear = 0.1;
-    const zFar = 100.0;
-
-    const projectionMatrix = mat4.create();
-
-    mat4.perspective(projectionMatrix,
-      fieldOfView,
-      aspect,
-      zNear,
-      zFar);
-
-    const modelViewMatrix = mat4.create();
-
-    mat4.translate(modelViewMatrix, // destination matrix
-      modelViewMatrix,              // matrix to translate
-      [-0.0, 0.0, -4.0]);            // amount to translate
-
-    const { buffer, count } = makeStrip(gl);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-
-    gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(aVertexPosition);
-
-    gl.uniformMatrix4fv(uModelViewMatrix, false, modelViewMatrix);
-    gl.uniformMatrix4fv(uProjectionMatrix, false, projectionMatrix);
-
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
   }, []);
 
@@ -124,7 +97,7 @@ function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: num
   return { buffer, count: positions.length / 3 };
 }
 
-function initShaderProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
+function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
   const program = gl.createProgram();
 
   if (!program) {
@@ -136,8 +109,9 @@ function initShaderProgram(gl: WebGLRenderingContext, vsSource: string, fsSource
   gl.linkProgram(program);
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = `Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`;
     gl.deleteProgram(program);
-    throw new Error(`Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`);
+    throw new Error(message);
   }
 
   return program;
@@ -154,10 +128,23 @@ function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
   gl.compileShader(shader);
 
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const message = `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`;
     gl.deleteShader(shader);
-    throw new Error(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
+    throw new Error(message);
   }
 
   return shader;
+}
+
+function makeModelViewMatrix() {
+  const modelViewMatrix = mat4.create();
+  mat4.translate(modelViewMatrix, modelViewMatrix, [0, 0, -4]);
+  return modelViewMatrix;
+}
+
+function makeProjectionMatrix(width: number, height: number) {
+  const projectionMatrix = mat4.create();
+  mat4.perspective(projectionMatrix, Math.PI / 4, width / height, 0.1, 100);
+  return projectionMatrix;
 }
 
