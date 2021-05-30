@@ -61,7 +61,7 @@ export default function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <canvas width="320px" height="320px" ref={canvas} />
+        <canvas width="640px" height="640px" ref={canvas} />
         <p>
           Edit <code>src/App.tsx</code> and save to reload.
         </p>
