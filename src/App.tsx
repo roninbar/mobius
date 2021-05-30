@@ -1,3 +1,4 @@
+/* eslint-disable one-var */
 /* eslint-disable no-bitwise */
 
 import { mat4 } from 'gl-matrix';
@@ -16,6 +17,15 @@ export default function App() {
     if (!gl) {
       throw new Error('Failed to get a WebGL context.');
     }
+
+    const positions = makeStrip();
+
+    const buffer = gl.createBuffer();
+    if (!buffer) {
+      throw new Error('Failed to create buffer.');
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
     const program = buildProgram(
       gl,
@@ -37,19 +47,15 @@ export default function App() {
     gl.useProgram(program);
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, makeModelViewMatrix());
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height));
-
-    const { buffer, count } = makeStrip(gl);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-
     gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
 
     gl.clearColor(0, 0, 0, 1);
-    gl.clearDepth(1.0);                 // Clear everything
-    gl.enable(gl.DEPTH_TEST);           // Enable depth testing
-    gl.depthFunc(gl.LEQUAL);            // Near things obscure far things
+    gl.clearDepth(1.0);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, positions.length / 3);
   }, []);
 
   return (
@@ -64,22 +70,22 @@ export default function App() {
         </a>
       </header>
     </div>
-  )
+  );
 }
 
-function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: number } {
+function makeStrip(): number[] {
+  const positions: number[] = [];
   const epsilon = 0.001;
   const nTwists = 3;
   const step = Math.PI / 30.0;
   const R = 1.0; const h = 0.1;
   const torsion = 0;
-  const positions: number[] = [];
   for (let i = 0; i < 2; i++) {
     for (let s = 0.0; s < 1.0 + epsilon; s += step / Math.PI) {
       const t = (i + s) * Math.PI;
       const tt = nTwists * 0.5 * t - torsion;
-      const ct = Math.cos(t); const st = Math.sin(t);
-      const ctt = Math.cos(tt); const stt = Math.sin(tt);
+      const ct = Math.cos(t), st = Math.sin(t);
+      const ctt = Math.cos(tt), stt = Math.sin(tt);
       const r1 = R - h * ctt;
       const r2 = R + h * ctt;
       const z1 = -h * stt;
@@ -88,63 +94,49 @@ function makeStrip(gl: WebGLRenderingContext): { buffer: WebGLBuffer, count: num
       positions.push(r1 * st, r1 * ct, z1);
     }
   }
-  const buffer = gl.createBuffer();
-  if (!buffer) {
-    throw new Error('Failed to create buffer.');
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-  return { buffer, count: positions.length / 3 };
+  return positions;
 }
 
 function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
   const program = gl.createProgram();
-
   if (!program) {
     throw new Error('Failed to create program.');
   }
-
   gl.attachShader(program, makeShader(gl, gl.VERTEX_SHADER, vsSource));
   gl.attachShader(program, makeShader(gl, gl.FRAGMENT_SHADER, fsSource));
   gl.linkProgram(program);
-
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     const message = `Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`;
     gl.deleteProgram(program);
     throw new Error(message);
   }
-
   return program;
 }
 
 function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
-
   if (!shader) {
     throw new Error('Failed to create shader.');
   }
-
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
-
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const message = `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`;
     gl.deleteShader(shader);
     throw new Error(message);
   }
-
   return shader;
 }
 
 function makeModelViewMatrix() {
-  const modelViewMatrix = mat4.create();
-  mat4.translate(modelViewMatrix, modelViewMatrix, [0, 0, -4]);
-  return modelViewMatrix;
+  const matrix = mat4.create();
+  mat4.translate(matrix, matrix, [0, 0, -4]);
+  return matrix;
 }
 
 function makeProjectionMatrix(width: number, height: number) {
-  const projectionMatrix = mat4.create();
-  mat4.perspective(projectionMatrix, Math.PI / 4, width / height, 0.1, 100);
-  return projectionMatrix;
+  const matrix = mat4.create();
+  mat4.perspective(matrix, Math.PI / 4, width / height, 0.1, 100);
+  return matrix;
 }
 
