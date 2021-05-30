@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.css": "/moebius-web/static/css/main.e9eaa6e7.chunk.css",
+    "main.js": "/moebius-web/static/js/main.bd06fcdd.chunk.js",
+    "main.js.map": "/moebius-web/static/js/main.bd06fcdd.chunk.js.map",
+    "runtime-main.js": "/moebius-web/static/js/runtime-main.448d6b11.js",
+    "runtime-main.js.map": "/moebius-web/static/js/runtime-main.448d6b11.js.map",
+    "static/js/2.e9f13537.chunk.js": "/moebius-web/static/js/2.e9f13537.chunk.js",
+    "static/js/2.e9f13537.chunk.js.map": "/moebius-web/static/js/2.e9f13537.chunk.js.map",
+    "index.html": "/moebius-web/index.html",
+    "precache-manifest.da0f9570408c8d7f207c96adb8129a07.js": "/moebius-web/precache-manifest.da0f9570408c8d7f207c96adb8129a07.js",
+    "service-worker.js": "/moebius-web/service-worker.js",
+    "static/css/main.e9eaa6e7.chunk.css.map": "/moebius-web/static/css/main.e9eaa6e7.chunk.css.map",
+    "static/js/2.e9f13537.chunk.js.LICENSE.txt": "/moebius-web/static/js/2.e9f13537.chunk.js.LICENSE.txt"
+  },
+  "entrypoints": [
+    "static/js/runtime-main.448d6b11.js",
+    "static/js/2.e9f13537.chunk.js",
+    "static/css/main.e9eaa6e7.chunk.css",
+    "static/js/main.bd06fcdd.chunk.js"
+  ]
+}
