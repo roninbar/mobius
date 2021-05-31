@@ -63,8 +63,8 @@ export default function App() {
     );
 
     gl.useProgram(program);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, makeModelViewMatrix());
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height));
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, makeModelViewMatrix(4));
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
 
     // Bind the position buffer to attribute aVertexPosition.
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -157,15 +157,15 @@ function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
   return shader;
 }
 
-function makeModelViewMatrix() {
+function makeModelViewMatrix(distance: number) {
   const matrix = mat4.create();
-  mat4.translate(matrix, matrix, [0, 0, -4]);
+  mat4.translate(matrix, matrix, [0, 0, -distance]);
   return matrix;
 }
 
-function makeProjectionMatrix(width: number, height: number) {
+function makeProjectionMatrix(width: number, height: number, fovy: number, near: number, far: number) {
   const matrix = mat4.create();
-  mat4.perspective(matrix, Math.PI / 4, width / height, 0.1, 100);
+  mat4.perspective(matrix, fovy, width / height, near, far);
   return matrix;
 }
 
