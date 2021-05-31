@@ -7,6 +7,13 @@ import './App.scss';
 
 const glsl = ([s]: TemplateStringsArray): string => s;
 
+const BLUE = [0, 0, 1];
+const GREEN = [0, 1, 0];
+const YELLOW = [1, 1, 0];
+const RED = [1, 0, 0];
+
+const COLOR = [BLUE, GREEN, YELLOW, RED];
+
 export default function App() {
 
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -18,28 +25,39 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    const positions = makeStrip();
+    const { positions, colors } = makeStrip(0);
 
-    const buffer = gl.createBuffer();
-    if (!buffer) {
-      throw new Error('Failed to create buffer.');
+    const positionBuffer = gl.createBuffer();
+    if (!positionBuffer) {
+      throw new Error('Failed to create position buffer.');
     }
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+    const colorBuffer = gl.createBuffer();
+    if (!colorBuffer) {
+      throw new Error('Failed to create color buffer.');
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 
     const program = buildProgram(
       gl,
       glsl`
         attribute vec4 aVertexPosition;
+        attribute vec4 aVertexColor;
         uniform mat4 uModelViewMatrix;
         uniform mat4 uProjectionMatrix;
-        void main() {
+        varying lowp vec4 vColor;
+        void main(void) {
           gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+          vColor = aVertexColor;
         }
       `,
       glsl`
-        void main() {
-          gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        varying lowp vec4 vColor;
+        void main(void) {
+          gl_FragColor = vColor;
         }
       `,
     );
@@ -47,8 +65,16 @@ export default function App() {
     gl.useProgram(program);
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, makeModelViewMatrix());
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height));
+
+    // Bind the position buffer to attribute aVertexPosition.
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+
+    // Bind the color buffer to attribute aVertexColor.
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexColor'), 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexColor'));
 
     gl.clearColor(0, 0, 0, 1);
     gl.clearDepth(1.0);
@@ -63,25 +89,23 @@ export default function App() {
       <header className="App-header">
         <canvas width="640px" height="640px" ref={canvas} />
         <p>
-          Edit <code>src/App.tsx</code> and save to reload.
+          M&ouml;bius Clock
         </p>
-        <a className="App-link" href="https://github.com/EliEladElrom/react-tutorials" target="_blank" rel="noopener noreferrer">
-          Eli Elad Elrom - React Tutorials
-        </a>
       </header>
     </div>
   );
 }
 
-function makeStrip(): number[] {
+function makeStrip(base: number): { positions: number[], colors: number[] } {
   const positions: number[] = [];
+  const colors: number[] = [];
   const epsilon = 0.001;
   const nTwists = 3;
-  const step = Math.PI / 30.0;
+  const step = 1 / 30.0;
   const R = 1.0; const h = 0.1;
   const torsion = 0;
   for (let i = 0; i < 2; i++) {
-    for (let s = 0.0; s < 1.0 + epsilon; s += step / Math.PI) {
+    for (let s = 0.0; s < 1.0 + epsilon; s += step) {
       const t = (i + s) * Math.PI;
       const tt = nTwists * 0.5 * t - torsion;
       const ct = Math.cos(t), st = Math.sin(t);
@@ -92,9 +116,14 @@ function makeStrip(): number[] {
       const z2 = +h * stt;
       positions.push(r2 * st, r2 * ct, z2);
       positions.push(r1 * st, r1 * ct, z1);
+      const color = new Array(3).fill(0);
+      for (let k = 0; k < 3; k++) {
+        color[k] = (1 - s) * COLOR[base + i][k] + s * COLOR[(base + i + 1) % COLOR.length][k];
+      }
+      colors.push(...color, ...color);
     }
   }
-  return positions;
+  return { positions, colors };
 }
 
 function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
