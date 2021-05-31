@@ -1,10 +1,10 @@
 self.__precacheManifest = (self.__precacheManifest || []).concat([
   {
-    "revision": "143f6098673befb0a74e093b8e27818c",
+    "revision": "226978141f902d0b6884e626ed920346",
     "url": "/moebius-web/index.html"
   },
   {
-    "revision": "5920c854d027952c3555",
+    "revision": "c7b527ec7b48e48ea03b",
     "url": "/moebius-web/static/css/main.974df22a.chunk.css"
   },
   {
@@ -16,8 +16,8 @@ self.__precacheManifest = (self.__precacheManifest || []).concat([
     "url": "/moebius-web/static/js/2.9428c324.chunk.js.LICENSE.txt"
   },
   {
-    "revision": "5920c854d027952c3555",
-    "url": "/moebius-web/static/js/main.7728882f.chunk.js"
+    "revision": "c7b527ec7b48e48ea03b",
+    "url": "/moebius-web/static/js/main.ef618821.chunk.js"
   },
   {
     "revision": "8fed3ac8e8fa7f9803f3",

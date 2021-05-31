@@ -1,14 +1,14 @@
 {
   "files": {
     "main.css": "/moebius-web/static/css/main.974df22a.chunk.css",
-    "main.js": "/moebius-web/static/js/main.7728882f.chunk.js",
-    "main.js.map": "/moebius-web/static/js/main.7728882f.chunk.js.map",
+    "main.js": "/moebius-web/static/js/main.ef618821.chunk.js",
+    "main.js.map": "/moebius-web/static/js/main.ef618821.chunk.js.map",
     "runtime-main.js": "/moebius-web/static/js/runtime-main.448d6b11.js",
     "runtime-main.js.map": "/moebius-web/static/js/runtime-main.448d6b11.js.map",
     "static/js/2.9428c324.chunk.js": "/moebius-web/static/js/2.9428c324.chunk.js",
     "static/js/2.9428c324.chunk.js.map": "/moebius-web/static/js/2.9428c324.chunk.js.map",
     "index.html": "/moebius-web/index.html",
-    "precache-manifest.efb43a1abf20c5dc7551d177e3013271.js": "/moebius-web/precache-manifest.efb43a1abf20c5dc7551d177e3013271.js",
+    "precache-manifest.38610f51a90da09592a6cdc4cbb85326.js": "/moebius-web/precache-manifest.38610f51a90da09592a6cdc4cbb85326.js",
     "service-worker.js": "/moebius-web/service-worker.js",
     "static/css/main.974df22a.chunk.css.map": "/moebius-web/static/css/main.974df22a.chunk.css.map",
     "static/js/2.9428c324.chunk.js.LICENSE.txt": "/moebius-web/static/js/2.9428c324.chunk.js.LICENSE.txt"
@@ -17,6 +17,6 @@
     "static/js/runtime-main.448d6b11.js",
     "static/js/2.9428c324.chunk.js",
     "static/css/main.974df22a.chunk.css",
-    "static/js/main.7728882f.chunk.js"
+    "static/js/main.ef618821.chunk.js"
   ]
 }
