@@ -69,7 +69,7 @@ export default function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <canvas width="640px" height="640px" ref={canvas} />
+        <canvas width="480px" height="480px" ref={canvas} />
         <p>
           M&ouml;bius Clock
         </p>
