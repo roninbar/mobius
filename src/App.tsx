@@ -2,7 +2,7 @@
 /* eslint-disable no-bitwise */
 
 import { mat4 } from 'gl-matrix';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './App.scss';
 
 const glsl = ([s]: TemplateStringsArray): string => s;
@@ -16,6 +16,16 @@ const COLOR = [BLUE, GREEN, YELLOW, RED];
 
 export default function App() {
 
+  const [torsion, setTorsion] = useState(0);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      setTorsion(now / 100 % 100 * Math.PI / 50);
+    }, 100);
+    return () => clearInterval(intervalId);
+  }, []);
+  
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -25,8 +35,8 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, 0, 0);
-    const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, 0, 2);
+    const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, torsion, 0);
+    const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, torsion, 2);
 
     const { program, attribs, uniforms } = buildProgram(gl);
 
@@ -45,7 +55,8 @@ export default function App() {
     render(gl, program, attribs.position, attribs.color, count0 / 3, positions0, colors0);
     gl.cullFace(gl.FRONT);
     render(gl, program, attribs.position, attribs.color, count2 / 3, positions2, colors2);
-  }, []);
+
+  }, [torsion]);
 
   return (
     <div className="App">
