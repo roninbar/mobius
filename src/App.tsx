@@ -28,30 +28,11 @@ export default function App() {
     const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, 0, 0);
     const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, 0, 2);
 
-    const program = buildProgram(
-      gl,
-      glsl`
-        attribute vec4 aVertexPosition;
-        attribute vec4 aVertexColor;
-        uniform mat4 uModelViewMatrix;
-        uniform mat4 uProjectionMatrix;
-        varying lowp vec4 vColor;
-        void main(void) {
-          gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-          vColor = aVertexColor;
-        }
-      `,
-      glsl`
-        varying lowp vec4 vColor;
-        void main(void) {
-          gl_FragColor = vColor;
-        }
-      `,
-    );
+    const { program, attribs, uniforms } = buildProgram(gl);
 
     gl.useProgram(program);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, makeModelViewMatrix(4));
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
+    gl.uniformMatrix4fv(uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
+    gl.uniformMatrix4fv(uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -61,9 +42,9 @@ export default function App() {
 
     gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.BACK);
-    render(gl, program, count0 / 3, positions0, colors0);
+    render(gl, program, attribs.position, attribs.color, count0 / 3, positions0, colors0);
     gl.cullFace(gl.FRONT);
-    render(gl, program, count2 / 3, positions2, colors2);
+    render(gl, program, attribs.position, attribs.color, count2 / 3, positions2, colors2);
   }, []);
 
   return (
@@ -78,38 +59,35 @@ export default function App() {
   );
 }
 
-function render(gl: WebGLRenderingContext, program: WebGLProgram, count: number, positions0: WebGLBuffer, colors0: WebGLBuffer) {
-  // Bind the position buffer to attribute aVertexPosition.
-  gl.bindBuffer(gl.ARRAY_BUFFER, positions0);
-  gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
-
-  // Bind the color buffer to attribute aVertexColor.
-  gl.bindBuffer(gl.ARRAY_BUFFER, colors0);
-  gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexColor'), 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexColor'));
-
+function render(gl: WebGLRenderingContext, program: WebGLProgram, vertexPositionAttrib: number, vertexColorAttrib: number, count: number, positions: WebGLBuffer, colors: WebGLBuffer) {
+  bindBufferToAttribute(gl, positions, vertexPositionAttrib);
+  bindBufferToAttribute(gl, colors, vertexColorAttrib);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
+}
+
+function bindBufferToAttribute(gl: WebGLRenderingContext, positions: WebGLBuffer, vertexPositionAttrib: number) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, positions);
+  gl.vertexAttribPointer(vertexPositionAttrib, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(vertexPositionAttrib);
 }
 
 function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, base: number) {
   const { positions, colors } = makeStrip(torsion, base);
+  return {
+    positions: makeBufferFromArray(gl, positions),
+    colors: makeBufferFromArray(gl, colors),
+    count: positions.length,
+  };
+}
 
+function makeBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
   const positionBuffer = gl.createBuffer();
   if (!positionBuffer) {
     throw new Error('Failed to create position buffer.');
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-  const colorBuffer = gl.createBuffer();
-  if (!colorBuffer) {
-    throw new Error('Failed to create color buffer.');
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
-  
-  return { positions: positionBuffer, colors: colorBuffer, count: positions.length };
+  return positionBuffer;
 }
 
 function makeStrip(torsion: number, base: number) {
@@ -141,7 +119,24 @@ function makeStrip(torsion: number, base: number) {
   return { positions, colors };
 }
 
-function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
+function buildProgram(gl: WebGLRenderingContext) {
+  const vsSource = glsl`
+    attribute vec4 aVertexPosition;
+    attribute vec4 aVertexColor;
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+    varying lowp vec4 vColor;
+    void main(void) {
+      gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+      vColor = aVertexColor;
+    }
+  `;
+  const fsSource = glsl`
+    varying lowp vec4 vColor;
+    void main(void) {
+      gl_FragColor = vColor;
+    }
+  `;
   const program = gl.createProgram();
   if (!program) {
     throw new Error('Failed to create program.');
@@ -154,7 +149,17 @@ function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: str
     gl.deleteProgram(program);
     throw new Error(message);
   }
-  return program;
+  return {
+    program,
+    attribs: {
+      position: gl.getAttribLocation(program, 'aVertexPosition'),
+      color: gl.getAttribLocation(program, 'aVertexColor'),
+    },
+    uniforms: {
+      modelViewMatrix: gl.getUniformLocation(program, 'uModelViewMatrix'),
+      projectionMatrix: gl.getUniformLocation(program, 'uProjectionMatrix'),
+    },
+  };
 }
 
 function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
