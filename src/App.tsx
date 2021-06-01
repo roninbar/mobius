@@ -25,8 +25,8 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, 0);
-    const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, 2);
+    const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, 0, 0);
+    const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, 0, 2);
 
     const program = buildProgram(
       gl,
@@ -92,8 +92,8 @@ function render(gl: WebGLRenderingContext, program: WebGLProgram, count: number,
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
 }
 
-function makeStripBuffers(gl: WebGLRenderingContext, base: number) {
-  const { positions, colors } = makeStrip(base);
+function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, base: number) {
+  const { positions, colors } = makeStrip(torsion, base);
 
   const positionBuffer = gl.createBuffer();
   if (!positionBuffer) {
@@ -112,15 +112,14 @@ function makeStripBuffers(gl: WebGLRenderingContext, base: number) {
   return { positions: positionBuffer, colors: colorBuffer, count: positions.length };
 }
 
-function makeStrip(base: number): { positions: number[], colors: number[] } {
+function makeStrip(torsion: number, base: number) {
   const positions: number[] = [];
   const colors: number[] = [];
-  const epsilon = 0.001;
   const nTwists = 3;
-  const step = 1 / 30.0;
   const R = 1.0; const h = 0.1;
-  const torsion = 0;
   for (let i = 0; i < 2; i++) {
+    const epsilon = 0.001;
+    const step = 1 / 30.0;
     for (let s = 0.0; s < 1.0 + epsilon; s += step) {
       const t = (i + s) * Math.PI;
       const tt = nTwists * 0.5 * t - torsion;
