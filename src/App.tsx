@@ -19,13 +19,15 @@ export default function App() {
   const [torsion, setTorsion] = useState(0);
 
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      const now = Date.now();
-      setTorsion(now / 100 % 100 * Math.PI / 50);
-    }, 100);
-    return () => clearInterval(intervalId);
+    let afid = requestAnimationFrame(function f(time) {
+      setTorsion(time / 4000 * Math.PI);
+      afid = requestAnimationFrame(f);
+    });
+    return () => {
+      cancelAnimationFrame(afid);
+    };
   }, []);
-  
+
   const canvas = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
