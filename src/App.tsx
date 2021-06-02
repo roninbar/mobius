@@ -2,8 +2,20 @@
 /* eslint-disable no-bitwise */
 
 import { mat4 } from 'gl-matrix';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { MutableRefObject, useEffect, useRef, useState } from 'react';
 import './App.scss';
+
+type ProgramInfo = {
+  program: WebGLProgram;
+  attribs: {
+    position: number;
+    color: number;
+  };
+  uniforms: {
+    modelViewMatrix: WebGLUniformLocation;
+    projectionMatrix: WebGLUniformLocation;
+  };
+};
 
 const glsl = ([s]: TemplateStringsArray): string => s;
 
@@ -18,7 +30,28 @@ export default function App() {
 
   const [torsion, setTorsion] = useState(0);
 
+  const programInfo: MutableRefObject<ProgramInfo | null> = useRef(null);
+
   useEffect(() => {
+    const gl = canvas.current?.getContext('webgl');
+
+    if (!gl) {
+      throw new Error('Failed to get a WebGL context.');
+    }
+
+    programInfo.current = buildProgram(gl);
+
+    gl.useProgram(programInfo.current.program);
+    gl.uniformMatrix4fv(programInfo.current.uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
+    gl.uniformMatrix4fv(programInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
+
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.clearDepth(1);
+    gl.clearColor(0, 0, 0, 1);
+
+    gl.enable(gl.CULL_FACE);
+
     let afid = requestAnimationFrame(function f(time) {
       setTorsion(time / 4000 * Math.PI);
       afid = requestAnimationFrame(f);
@@ -37,26 +70,19 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
+    if (!programInfo.current) {
+      throw new Error('No program!');
+    }
+
     const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, torsion, 0);
     const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, torsion, 2);
 
-    const { program, attribs, uniforms } = buildProgram(gl);
-
-    gl.useProgram(program);
-    gl.uniformMatrix4fv(uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
-    gl.uniformMatrix4fv(uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
-
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
-    gl.clearDepth(1);
-    gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.BACK);
-    render(gl, program, attribs.position, attribs.color, count0 / 3, positions0, colors0);
+    render(gl, programInfo.current.program, programInfo.current?.attribs.position, programInfo.current?.attribs.color, count0 / 3, positions0, colors0);
     gl.cullFace(gl.FRONT);
-    render(gl, program, attribs.position, attribs.color, count2 / 3, positions2, colors2);
+    render(gl, programInfo.current.program, programInfo.current?.attribs.position, programInfo.current?.attribs.color, count2 / 3, positions2, colors2);
 
   }, [torsion]);
 
@@ -132,7 +158,12 @@ function makeStrip(torsion: number, base: number) {
   return { positions, colors };
 }
 
-function buildProgram(gl: WebGLRenderingContext) {
+function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
+  const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
+  const U_PROJECTION_MATRIX = 'uProjectionMatrix';
+  const A_VERTEX_POSITION = 'aVertexPosition';
+  const A_VERTEX_COLOR = 'aVertexColor';
+
   const vsSource = glsl`
     attribute vec4 aVertexPosition;
     attribute vec4 aVertexColor;
@@ -144,16 +175,20 @@ function buildProgram(gl: WebGLRenderingContext) {
       vColor = aVertexColor;
     }
   `;
+
   const fsSource = glsl`
     varying lowp vec4 vColor;
     void main(void) {
       gl_FragColor = vColor;
     }
   `;
+
   const program = gl.createProgram();
+
   if (!program) {
     throw new Error('Failed to create program.');
   }
+
   gl.attachShader(program, makeShader(gl, gl.VERTEX_SHADER, vsSource));
   gl.attachShader(program, makeShader(gl, gl.FRAGMENT_SHADER, fsSource));
   gl.linkProgram(program);
@@ -162,17 +197,26 @@ function buildProgram(gl: WebGLRenderingContext) {
     gl.deleteProgram(program);
     throw new Error(message);
   }
+
   return {
     program,
     attribs: {
-      position: gl.getAttribLocation(program, 'aVertexPosition'),
-      color: gl.getAttribLocation(program, 'aVertexColor'),
+      position: gl.getAttribLocation(program, A_VERTEX_POSITION),
+      color: gl.getAttribLocation(program, A_VERTEX_COLOR),
     },
     uniforms: {
-      modelViewMatrix: gl.getUniformLocation(program, 'uModelViewMatrix'),
-      projectionMatrix: gl.getUniformLocation(program, 'uProjectionMatrix'),
+      modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
+      projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
     },
   };
+}
+
+function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, U_MODEL_VIEW_MATRIX: string): WebGLUniformLocation {
+  return gl.getUniformLocation(program, U_MODEL_VIEW_MATRIX) || error(`No uniform named "${U_MODEL_VIEW_MATRIX}" was found.`);
+}
+
+function error<T>(message: string): T {
+  throw new Error(message);
 }
 
 function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
