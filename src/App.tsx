@@ -8,10 +8,12 @@ import './App.scss';
 type ProgramInfo = {
   program: WebGLProgram;
   attribs: {
-    position: number;
     color: number;
+    position: number;
+    textureCoords: number;
   };
   uniforms: {
+    sampler: WebGLSampler;
     modelViewMatrix: WebGLUniformLocation;
     projectionMatrix: WebGLUniformLocation;
   };
@@ -24,7 +26,7 @@ const GREEN = [0, 1, 0];
 const YELLOW = [1, 1, 0];
 const RED = [1, 0, 0];
 
-const COLOR = [BLUE, GREEN, YELLOW, RED];
+const COLORS = [BLUE, GREEN, YELLOW, RED];
 
 export default function App() {
 
@@ -34,6 +36,7 @@ export default function App() {
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
+  // Initialize WebGL stuff and start the animation.
   useEffect(() => {
 
     const gl = canvas.current?.getContext('webgl');
@@ -47,6 +50,10 @@ export default function App() {
     gl.useProgram(programInfo.current.program);
     gl.uniformMatrix4fv(programInfo.current.uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
     gl.uniformMatrix4fv(programInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, loadTexture(gl, '/mobius/texture/hours0.bmp'));
+    gl.uniform1i(programInfo.current.uniforms.sampler, 0);
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -66,6 +73,7 @@ export default function App() {
 
   }, []);
 
+  // Render one frame.
   useEffect(() => {
 
     const gl = canvas.current?.getContext('webgl');
@@ -74,21 +82,21 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
     
-    const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, torsion, 0);
-    const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, torsion, 2);
+    const { positions: positions0, colors: colors0, textureCoords: textureCoords0, count: count0 } = makeStripBuffers(gl, torsion, 0);
+    const { positions: positions2, colors: colors2, textureCoords: textureCoords2, count: count2 } = makeStripBuffers(gl, torsion, 2);
     
     if (!programInfo.current) {
       throw new Error('No shader program!');
     }
 
-    const { program, attribs } = programInfo.current;
+    const { attribs } = programInfo.current;
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.cullFace(gl.BACK);
-    render(gl, program, attribs.position, attribs.color, count0 / 3, positions0, colors0);
+    render(gl, attribs.position, attribs.color, attribs.textureCoords, positions0, colors0, textureCoords0, count0 / 3);
     gl.cullFace(gl.FRONT);
-    render(gl, program, attribs.position, attribs.color, count2 / 3, positions2, colors2);
+    render(gl, attribs.position, attribs.color, attribs.textureCoords, positions2, colors2, textureCoords2, count2 / 3);
 
   }, [torsion]);
 
@@ -108,88 +116,166 @@ function error<T>(message: string): T {
   throw new Error(message);
 }
 
-function render(gl: WebGLRenderingContext, program: WebGLProgram, vertexPositionAttrib: number, vertexColorAttrib: number, count: number, positions: WebGLBuffer, colors: WebGLBuffer) {
-  bindBufferToAttribute(gl, positions, vertexPositionAttrib);
-  bindBufferToAttribute(gl, colors, vertexColorAttrib);
+function render(
+  gl: WebGLRenderingContext,
+  positionAttrib: number,
+  colorAttrib: number,
+  texCoordAttrib: number,
+  positionBuffer: WebGLBuffer,
+  colorBuffer: WebGLBuffer,
+  texCoordBuffer: WebGLBuffer,
+  count: number,
+) {
+  bindAttributeToBuffer(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
+  bindAttributeToBuffer(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
+  bindAttributeToBuffer(gl, texCoordAttrib, texCoordBuffer, 2, gl.FLOAT);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
 }
 
-function bindBufferToAttribute(gl: WebGLRenderingContext, positions: WebGLBuffer, vertexPositionAttrib: number) {
-  gl.bindBuffer(gl.ARRAY_BUFFER, positions);
-  gl.vertexAttribPointer(vertexPositionAttrib, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(vertexPositionAttrib);
+//
+// Initialize a texture and load an image.
+// When the image finished loading copy it into the texture.
+//
+function loadTexture(gl: WebGLRenderingContext, url: string) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+
+  // Because images have to be download over the internet
+  // they might take a moment until they are ready.
+  // Until then put a single pixel in the texture so we can
+  // use it immediately. When the image has finished downloading
+  // we'll update the texture with the contents of the image.
+  const level = 0;
+  const internalFormat = gl.RGBA;
+  const width = 1;
+  const height = 1;
+  const border = 0;
+  const srcFormat = gl.RGBA;
+  const srcType = gl.UNSIGNED_BYTE;
+  const pixel = new Uint8Array([0, 0, 255, 255]);  // opaque blue
+  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+    width, height, border, srcFormat, srcType,
+    pixel);
+
+  const image = new Image();
+  image.onload = () => {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+      srcFormat, srcType, image);
+
+    // WebGL1 has different requirements for power of 2 images
+    // vs non power of 2 images so check if the image is a
+    // power of 2 in both dimensions.
+    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
+      // Yes, it's a power of 2. Generate mips.
+      gl.generateMipmap(gl.TEXTURE_2D);
+    } else {
+      // No, it's not a power of 2. Turn of mips and set
+      // wrapping to clamp to edge
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
+  };
+  image.src = url;
+
+  return texture;
+}
+
+function isPowerOf2(value: number) {
+  return (value & (value - 1)) === 0;
+}
+
+function bindAttributeToBuffer(gl: WebGLRenderingContext, attrib: number, buffer: WebGLBuffer, size: number, type: number) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.vertexAttribPointer(attrib, size, type, false, 0, 0);
+  gl.enableVertexAttribArray(attrib);
 }
 
 function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, base: number) {
-  const { positions, colors } = makeStrip(torsion, base);
+  const { positions, colors, textureCoords } = makeStrip(torsion, base);
   return {
     positions: makeBufferFromArray(gl, positions),
     colors: makeBufferFromArray(gl, colors),
+    textureCoords: makeBufferFromArray(gl, textureCoords),
     count: positions.length,
   };
 }
 
 function makeBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
-  const positionBuffer = gl.createBuffer();
-  if (!positionBuffer) {
-    throw new Error('Failed to create position buffer.');
+  const buffer = gl.createBuffer();
+  if (!buffer) {
+    throw new Error('Failed to create buffer.');
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-  return positionBuffer;
+  return buffer;
 }
 
 function makeStrip(torsion: number, base: number) {
+  const textureCoords: number[] = [];
   const positions: number[] = [];
   const colors: number[] = [];
   const nTwists = 3;
   const R = 1.0; const h = 0.1;
   for (let i = 0; i < 2; i++) {
-    const epsilon = 0.001;
-    const step = 1 / 30.0;
-    for (let s = 0.0; s < 1.0 + epsilon; s += step) {
+    for (let s = 0.0; s < 1.001; s += 0.033333) {
+      // Position
       const t = (i + s) * Math.PI;
       const tt = nTwists * 0.5 * t - torsion;
-      const ct = Math.cos(t), st = Math.sin(t);
-      const ctt = Math.cos(tt), stt = Math.sin(tt);
-      const r1 = R - h * ctt;
-      const r2 = R + h * ctt;
-      const z1 = -h * stt;
-      const z2 = +h * stt;
-      positions.push(r2 * st, r2 * ct, z2);
-      positions.push(r1 * st, r1 * ct, z1);
+      const r1 = R - h * Math.cos(tt);
+      const r2 = R + h * Math.cos(tt);
+      positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
+      positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -h * Math.sin(tt));
+      // Color
       const color = new Array(3).fill(0);
       for (let k = 0; k < 3; k++) {
-        color[k] = (1 - s) * COLOR[base + i][k] + s * COLOR[(base + i + 1) % COLOR.length][k];
+        color[k] = (1 - s) * COLORS[base + i][k] + s * COLORS[(base + i + 1) % COLORS.length][k];
       }
       colors.push(...color, ...color);
+      // Texture Coordinates
+      textureCoords.push(s, 0, s, 1);
     }
   }
-  return { positions, colors };
+  return { positions, colors, textureCoords };
 }
 
 function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
   const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
-  const A_VERTEX_POSITION = 'aVertexPosition';
-  const A_VERTEX_COLOR = 'aVertexColor';
+  const U_SAMPLER = 'uSampler';
+  const A_POSITION = 'aPosition';
+  const A_COLOR = 'aColor';
+  const A_TEXTURE_COORDS = 'aTextureCoords';
 
   const vsSource = glsl`
-    attribute vec4 aVertexPosition;
-    attribute vec4 aVertexColor;
+    // Attributes
+    attribute vec4 aPosition;
+    attribute vec4 aColor;
+    attribute vec2 aTextureCoords;
+    // Uniforms
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
+    // Varyings
     varying lowp vec4 vColor;
+    varying highp vec2 vTextureCoords;
+    // Program
     void main(void) {
-      gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-      vColor = aVertexColor;
+      gl_Position = uProjectionMatrix * uModelViewMatrix * aPosition;
+      vColor = aColor;
+      vTextureCoords = aTextureCoords;
     }
   `;
 
   const fsSource = glsl`
+    // Varyings
     varying lowp vec4 vColor;
+    varying highp vec2 vTextureCoords;
+    // Uniforms
+    uniform sampler2D uSampler;
+    // Program
     void main(void) {
-      gl_FragColor = vColor;
+      gl_FragColor = vColor * texture2D(uSampler, vTextureCoords);
     }
   `;
 
@@ -211,10 +297,12 @@ function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
   return {
     program,
     attribs: {
-      position: gl.getAttribLocation(program, A_VERTEX_POSITION),
-      color: gl.getAttribLocation(program, A_VERTEX_COLOR),
+      position: gl.getAttribLocation(program, A_POSITION),
+      color: gl.getAttribLocation(program, A_COLOR),
+      textureCoords: gl.getAttribLocation(program, A_TEXTURE_COORDS),
     },
     uniforms: {
+      sampler: getUniformLocation(gl, program, U_SAMPLER),
       modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
       projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
     },
