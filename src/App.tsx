@@ -32,7 +32,10 @@ export default function App() {
 
   const programInfo: MutableRefObject<ProgramInfo | null> = useRef(null);
 
+  const canvas = useRef<HTMLCanvasElement>(null);
+
   useEffect(() => {
+
     const gl = canvas.current?.getContext('webgl');
 
     if (!gl) {
@@ -56,33 +59,36 @@ export default function App() {
       setTorsion(time / 4000 * Math.PI);
       afid = requestAnimationFrame(f);
     });
+
     return () => {
       cancelAnimationFrame(afid);
     };
+
   }, []);
 
-  const canvas = useRef<HTMLCanvasElement>(null);
-
   useEffect(() => {
-    const gl = canvas.current?.getContext('webgl');
 
+    const gl = canvas.current?.getContext('webgl');
+    
     if (!gl) {
       throw new Error('Failed to get a WebGL context.');
     }
-
-    if (!programInfo.current) {
-      throw new Error('No program!');
-    }
-
+    
     const { positions: positions0, colors: colors0, count: count0 } = makeStripBuffers(gl, torsion, 0);
     const { positions: positions2, colors: colors2, count: count2 } = makeStripBuffers(gl, torsion, 2);
+    
+    if (!programInfo.current) {
+      throw new Error('No shader program!');
+    }
+
+    const { program, attribs } = programInfo.current;
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.cullFace(gl.BACK);
-    render(gl, programInfo.current.program, programInfo.current?.attribs.position, programInfo.current?.attribs.color, count0 / 3, positions0, colors0);
+    render(gl, program, attribs.position, attribs.color, count0 / 3, positions0, colors0);
     gl.cullFace(gl.FRONT);
-    render(gl, programInfo.current.program, programInfo.current?.attribs.position, programInfo.current?.attribs.color, count2 / 3, positions2, colors2);
+    render(gl, program, attribs.position, attribs.color, count2 / 3, positions2, colors2);
 
   }, [torsion]);
 
@@ -96,6 +102,10 @@ export default function App() {
       </header>
     </div>
   );
+}
+
+function error<T>(message: string): T {
+  throw new Error(message);
 }
 
 function render(gl: WebGLRenderingContext, program: WebGLProgram, vertexPositionAttrib: number, vertexColorAttrib: number, count: number, positions: WebGLBuffer, colors: WebGLBuffer) {
@@ -213,10 +223,6 @@ function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
 
 function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, U_MODEL_VIEW_MATRIX: string): WebGLUniformLocation {
   return gl.getUniformLocation(program, U_MODEL_VIEW_MATRIX) || error(`No uniform named "${U_MODEL_VIEW_MATRIX}" was found.`);
-}
-
-function error<T>(message: string): T {
-  throw new Error(message);
 }
 
 function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
