@@ -323,8 +323,8 @@ function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
   };
 }
 
-function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, U_MODEL_VIEW_MATRIX: string): WebGLUniformLocation {
-  return gl.getUniformLocation(program, U_MODEL_VIEW_MATRIX) || error(`No uniform named "${U_MODEL_VIEW_MATRIX}" was found.`);
+function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, name: string): WebGLUniformLocation {
+  return gl.getUniformLocation(program, name) || error(`No uniform named "${name}" was found.`);
 }
 
 function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
