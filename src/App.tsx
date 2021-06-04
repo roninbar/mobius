@@ -52,7 +52,7 @@ export default function App() {
     gl.uniformMatrix4fv(programInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
 
     for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
-      const texture = loadTexture(gl, `/mobius/texture/hours${which - gl.TEXTURE0}.bmp`);
+      const texture = loadTexture(gl, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
       gl.activeTexture(which);
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
