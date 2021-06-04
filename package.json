@@ -80,8 +80,6 @@
     "yarn": "^1.22.10"
   },
   "scripts": {
-    "predeploy": "yarn build",
-    "deploy": "gh-pages -d build",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
@@ -99,7 +97,9 @@
     "build:serve": "yarn build && serve -s build",
     "build:profile": "yarn build --profile && serve -s build",
     "analyze": "yarn build && source-map-explorer 'build/static/js/*.js'",
-    "analyzer": "yarn build && npx cra-bundle-analyzer"
+    "analyzer": "yarn build && npx cra-bundle-analyzer",
+    "predeploy": "yarn build",
+    "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
     "extends": "react-app"
