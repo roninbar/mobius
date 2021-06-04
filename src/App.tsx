@@ -51,9 +51,14 @@ export default function App() {
     gl.uniformMatrix4fv(programInfo.current.uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
     gl.uniformMatrix4fv(programInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, loadTexture(gl, '/mobius/texture/hours0.bmp'));
-    gl.uniform1i(programInfo.current.uniforms.sampler, 0);
+    for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
+      const texture = loadTexture(gl, `/mobius/texture/hours${which - gl.TEXTURE0}.bmp`);
+      gl.activeTexture(which);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    }
+
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -77,14 +82,14 @@ export default function App() {
   useEffect(() => {
 
     const gl = canvas.current?.getContext('webgl');
-    
+
     if (!gl) {
       throw new Error('Failed to get a WebGL context.');
     }
-    
+
     const { positions: positions0, colors: colors0, textureCoords: textureCoords0, count: count0 } = makeStripBuffers(gl, torsion, 0);
     const { positions: positions2, colors: colors2, textureCoords: textureCoords2, count: count2 } = makeStripBuffers(gl, torsion, 2);
-    
+
     if (!programInfo.current) {
       throw new Error('No shader program!');
     }
@@ -94,8 +99,10 @@ export default function App() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.cullFace(gl.BACK);
+    gl.uniform1i(programInfo.current.uniforms.sampler, 0);
     render(gl, attribs.position, attribs.color, attribs.textureCoords, positions0, colors0, textureCoords0, count0 / 3);
     gl.cullFace(gl.FRONT);
+    gl.uniform1i(programInfo.current.uniforms.sampler, 2);
     render(gl, attribs.position, attribs.color, attribs.textureCoords, positions2, colors2, textureCoords2, count2 / 3);
 
   }, [torsion]);
@@ -103,7 +110,7 @@ export default function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <canvas width="480px" height="480px" ref={canvas} />
+        <canvas width="640px" height="640px" ref={canvas} />
         <p>
           M&ouml;bius Clock
         </p>
@@ -225,8 +232,8 @@ function makeStrip(torsion: number, base: number) {
       const tt = nTwists * 0.5 * t - torsion;
       const r1 = R - h * Math.cos(tt);
       const r2 = R + h * Math.cos(tt);
-      positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
       positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -h * Math.sin(tt));
+      positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
       // Color
       const color = new Array(3).fill(0);
       for (let k = 0; k < 3; k++) {
@@ -234,7 +241,7 @@ function makeStrip(torsion: number, base: number) {
       }
       colors.push(...color, ...color);
       // Texture Coordinates
-      textureCoords.push(s, 0, s, 1);
+      textureCoords.push(t / Math.PI, 1, t / Math.PI, 0);
     }
   }
   return { positions, colors, textureCoords };
