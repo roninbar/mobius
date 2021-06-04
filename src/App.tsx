@@ -59,7 +59,6 @@ export default function App() {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     }
 
-
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.clearDepth(1);
@@ -87,23 +86,31 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    const { positions: positions0, colors: colors0, textureCoords: textureCoords0, count: count0 } = makeStripBuffers(gl, torsion, 0);
-    const { positions: positions2, colors: colors2, textureCoords: textureCoords2, count: count2 } = makeStripBuffers(gl, torsion, 2);
-
     if (!programInfo.current) {
       throw new Error('No shader program!');
     }
 
     const { attribs } = programInfo.current;
 
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    const { positions: positions0, colors: colors0, textureCoords: textureCoords0, count: count0 } = makeStripBuffers(gl, torsion, 0);
+    const { positions: positions2, colors: colors2, textureCoords: textureCoords2, count: count2 } = makeStripBuffers(gl, torsion, 2);
 
-    gl.cullFace(gl.BACK);
-    gl.uniform1i(programInfo.current.uniforms.sampler, 0);
-    render(gl, attribs.position, attribs.color, attribs.textureCoords, positions0, colors0, textureCoords0, count0 / 3);
-    gl.cullFace(gl.FRONT);
-    gl.uniform1i(programInfo.current.uniforms.sampler, 2);
-    render(gl, attribs.position, attribs.color, attribs.textureCoords, positions2, colors2, textureCoords2, count2 / 3);
+    try {
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.cullFace(gl.BACK);
+      gl.uniform1i(programInfo.current.uniforms.sampler, 0);
+      render(gl, attribs.position, attribs.color, attribs.textureCoords, positions0, colors0, textureCoords0, count0 / 3);
+      gl.cullFace(gl.FRONT);
+      gl.uniform1i(programInfo.current.uniforms.sampler, 2);
+      render(gl, attribs.position, attribs.color, attribs.textureCoords, positions2, colors2, textureCoords2, count2 / 3);
+    } finally {
+      gl.deleteBuffer(positions0);
+      gl.deleteBuffer(colors0);
+      gl.deleteBuffer(textureCoords0);
+      gl.deleteBuffer(positions2);
+      gl.deleteBuffer(colors2);
+      gl.deleteBuffer(textureCoords2);
+    }
 
   }, [torsion]);
 
