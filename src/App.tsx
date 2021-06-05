@@ -52,7 +52,7 @@ export default function App() {
     gl.uniformMatrix4fv(programInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
 
     for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
-      const texture = loadTexture(gl, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
+      const texture = loadTexture(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
       gl.activeTexture(which);
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -65,7 +65,7 @@ export default function App() {
     gl.clearColor(0, 0, 0, 1);
     gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.BACK);
-    
+
     let afid = requestAnimationFrame(function f(time) {
       setTorsion(time / 4000 * Math.PI);
       afid = requestAnimationFrame(f);
@@ -114,8 +114,8 @@ export default function App() {
           gl,
           62,
           attribs.position, positionBuffers[i],
-          attribs.color, colorBuffers[i], 
-          attribs.textureCoords, textureCoordBuffers[i], 
+          attribs.color, colorBuffers[i],
+          attribs.textureCoords, textureCoordBuffers[i],
         );
       }
     } finally {
@@ -158,8 +158,9 @@ function render(
 // Initialize a texture and load an image.
 // When the image finished loading copy it into the texture.
 //
-function loadTexture(gl: WebGLRenderingContext, url: string) {
+function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
   const texture = gl.createTexture();
+  gl.activeTexture(which);
   gl.bindTexture(gl.TEXTURE_2D, texture);
 
   // Because images have to be download over the internet
@@ -179,6 +180,7 @@ function loadTexture(gl: WebGLRenderingContext, url: string) {
 
   const image = new Image();
   image.onload = () => {
+    gl.activeTexture(which);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, image);
 
