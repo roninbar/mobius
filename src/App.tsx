@@ -63,9 +63,9 @@ export default function App() {
     gl.depthFunc(gl.LEQUAL);
     gl.clearDepth(1);
     gl.clearColor(0, 0, 0, 1);
-
     gl.enable(gl.CULL_FACE);
-
+    gl.cullFace(gl.BACK);
+    
     let afid = requestAnimationFrame(function f(time) {
       setTorsion(time / 4000 * Math.PI);
       afid = requestAnimationFrame(f);
@@ -90,26 +90,36 @@ export default function App() {
       throw new Error('No shader program!');
     }
 
-    const { attribs } = programInfo.current;
+    const { attribs, uniforms } = programInfo.current;
 
-    const { positions: positions0, colors: colors0, textureCoords: textureCoords0, count: count0 } = makeStripBuffers(gl, torsion, 0);
-    const { positions: positions2, colors: colors2, textureCoords: textureCoords2, count: count2 } = makeStripBuffers(gl, torsion, 2);
+    const vertexCounts: number[] = [];
+    const positionBuffers: WebGLBuffer[] = [];
+    const colorBuffers: WebGLBuffer[] = [];
+    const textureCoordBuffers: WebGLBuffer[] = [];
+
+    for (let i = 0; i < 4; i++) (
+      {
+        vertexCount: vertexCounts[i],
+        positions: positionBuffers[i],
+        colors: colorBuffers[i],
+        textureCoords: textureCoordBuffers[i],
+      } = makeStripBuffers(gl, torsion, i)
+    );
 
     try {
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      gl.cullFace(gl.BACK);
-      gl.uniform1i(programInfo.current.uniforms.sampler, 0);
-      render(gl, attribs.position, attribs.color, attribs.textureCoords, positions0, colors0, textureCoords0, count0 / 3);
-      gl.cullFace(gl.FRONT);
-      gl.uniform1i(programInfo.current.uniforms.sampler, 2);
-      render(gl, attribs.position, attribs.color, attribs.textureCoords, positions2, colors2, textureCoords2, count2 / 3);
+      for (let i = 0; i < 4; i++) {
+        gl.uniform1i(uniforms.sampler, i);
+        render(
+          gl,
+          62,
+          attribs.position, positionBuffers[i],
+          attribs.color, colorBuffers[i], 
+          attribs.textureCoords, textureCoordBuffers[i], 
+        );
+      }
     } finally {
-      gl.deleteBuffer(positions0);
-      gl.deleteBuffer(colors0);
-      gl.deleteBuffer(textureCoords0);
-      gl.deleteBuffer(positions2);
-      gl.deleteBuffer(colors2);
-      gl.deleteBuffer(textureCoords2);
+      [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => gl.deleteBuffer(buffer));
     }
 
   }, [torsion]);
@@ -118,9 +128,7 @@ export default function App() {
     <div className="App">
       <header className="App-header">
         <canvas width="640px" height="640px" ref={canvas} />
-        <p>
-          M&ouml;bius Clock
-        </p>
+        <p>M&ouml;bius Clock</p>
       </header>
     </div>
   );
@@ -132,18 +140,18 @@ function error<T>(message: string): T {
 
 function render(
   gl: WebGLRenderingContext,
+  vertexCount: number,
   positionAttrib: number,
-  colorAttrib: number,
-  texCoordAttrib: number,
   positionBuffer: WebGLBuffer,
+  colorAttrib: number,
   colorBuffer: WebGLBuffer,
+  texCoordAttrib: number,
   texCoordBuffer: WebGLBuffer,
-  count: number,
 ) {
   bindAttributeToBuffer(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
   bindAttributeToBuffer(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
   bindAttributeToBuffer(gl, texCoordAttrib, texCoordBuffer, 2, gl.FLOAT);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, count);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
 }
 
 //
@@ -166,16 +174,13 @@ function loadTexture(gl: WebGLRenderingContext, url: string) {
   const border = 0;
   const srcFormat = gl.RGBA;
   const srcType = gl.UNSIGNED_BYTE;
-  const pixel = new Uint8Array([0, 0, 255, 255]);  // opaque blue
-  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-    width, height, border, srcFormat, srcType,
-    pixel);
+  const pixel = new Uint8Array([0, 0, 255, 255]); // opaque blue
+  gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, srcFormat, srcType, pixel);
 
   const image = new Image();
   image.onload = () => {
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-      srcFormat, srcType, image);
+    gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, srcFormat, srcType, image);
 
     // WebGL1 has different requirements for power of 2 images
     // vs non power of 2 images so check if the image is a
@@ -206,13 +211,13 @@ function bindAttributeToBuffer(gl: WebGLRenderingContext, attrib: number, buffer
   gl.enableVertexAttribArray(attrib);
 }
 
-function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, base: number) {
-  const { positions, colors, textureCoords } = makeStrip(torsion, base);
+function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: number) {
+  const { positions, colors, textureCoords } = makeStrip(torsion, piece);
   return {
+    vertexCount: positions.length / 3,
     positions: makeBufferFromArray(gl, positions),
     colors: makeBufferFromArray(gl, colors),
     textureCoords: makeBufferFromArray(gl, textureCoords),
-    count: positions.length,
   };
 }
 
@@ -226,30 +231,29 @@ function makeBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
   return buffer;
 }
 
-function makeStrip(torsion: number, base: number) {
+function makeStrip(torsion: number, piece: number) {
   const textureCoords: number[] = [];
   const positions: number[] = [];
   const colors: number[] = [];
   const nTwists = 3;
-  const R = 1.0; const h = 0.1;
-  for (let i = 0; i < 2; i++) {
-    for (let s = 0.0; s < 1.001; s += 0.033333) {
-      // Position
-      const t = (i + s) * Math.PI;
-      const tt = nTwists * 0.5 * t - torsion;
-      const r1 = R - h * Math.cos(tt);
-      const r2 = R + h * Math.cos(tt);
-      positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -h * Math.sin(tt));
-      positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
-      // Color
-      const color = new Array(3).fill(0);
-      for (let k = 0; k < 3; k++) {
-        color[k] = (1 - s) * COLORS[base + i][k] + s * COLORS[(base + i + 1) % COLORS.length][k];
-      }
-      colors.push(...color, ...color);
-      // Texture Coordinates
-      textureCoords.push(t / Math.PI, 1, t / Math.PI, 0);
+  const R = 1.0;
+  const h = 0.1;
+  for (let s = 0.0; s < 1.001; s += 0.033333) {
+    const t = (piece + s) * Math.PI;
+    const tt = nTwists * 0.5 * t - torsion;
+    // Position
+    const r1 = R - h * Math.cos(tt);
+    const r2 = R + h * Math.cos(tt);
+    positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -h * Math.sin(tt));
+    positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
+    // Color
+    const color = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      color[k] = (1 - s) * COLORS[piece][k] + s * COLORS[(piece + 1) % COLORS.length][k];
     }
+    colors.push(...color, ...color);
+    // Texture Coordinates
+    textureCoords.push(s, 0, s, 1);
   }
   return { positions, colors, textureCoords };
 }
