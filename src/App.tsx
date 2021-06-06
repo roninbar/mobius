@@ -112,7 +112,7 @@ export default function App() {
         gl.uniform1i(uniforms.sampler, i);
         render(
           gl,
-          62,
+          vertexCounts[i],
           attribs.position, positionBuffers[i],
           attribs.color, colorBuffers[i],
           attribs.textureCoords, textureCoordBuffers[i],
