@@ -1,6 +1,6 @@
 self.__precacheManifest = (self.__precacheManifest || []).concat([
   {
-    "revision": "486cec88588967e138f4fce66dba4514",
+    "revision": "450edd495fdde2e1a5a517097fa3e410",
     "url": "/mobius/index.html"
   },
   {
