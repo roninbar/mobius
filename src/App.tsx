@@ -19,7 +19,7 @@ type ProgramInfo = {
   };
 };
 
-const glsl = ([s]: TemplateStringsArray): string => s;
+const glsl = (pieces: TemplateStringsArray, ...args: string[]) => pieces.slice(1).reduce((a, b, i) => a + args[i] + b, pieces[0]);
 
 const BLUE = [0, 0, 1];
 const GREEN = [0, 1, 0];
@@ -267,35 +267,37 @@ function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
   const A_POSITION = 'aPosition';
   const A_COLOR = 'aColor';
   const A_TEXTURE_COORDS = 'aTextureCoords';
+  const V_COLOR = 'vColor';
+  const V_TEXTURE_COORDS = 'vTextureCoords';
 
   const vsSource = glsl`
     // Attributes
-    attribute vec4 aPosition;
-    attribute vec4 aColor;
-    attribute vec2 aTextureCoords;
+    attribute vec4 ${A_POSITION};
+    attribute vec4 ${A_COLOR};
+    attribute vec2 ${A_TEXTURE_COORDS};
     // Uniforms
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
+    uniform mat4 ${U_MODEL_VIEW_MATRIX};
+    uniform mat4 ${U_PROJECTION_MATRIX};
     // Varyings
-    varying lowp vec4 vColor;
-    varying highp vec2 vTextureCoords;
+    varying lowp vec4 ${V_COLOR};
+    varying highp vec2 ${V_TEXTURE_COORDS};
     // Program
     void main(void) {
-      gl_Position = uProjectionMatrix * uModelViewMatrix * aPosition;
-      vColor = aColor;
-      vTextureCoords = aTextureCoords;
+      gl_Position = ${U_PROJECTION_MATRIX} * ${U_MODEL_VIEW_MATRIX} * ${A_POSITION};
+      ${V_COLOR} = ${A_COLOR};
+      ${V_TEXTURE_COORDS} = ${A_TEXTURE_COORDS};
     }
   `;
 
   const fsSource = glsl`
     // Varyings
-    varying lowp vec4 vColor;
-    varying highp vec2 vTextureCoords;
+    varying lowp vec4 ${V_COLOR};
+    varying highp vec2 ${V_TEXTURE_COORDS};
     // Uniforms
-    uniform sampler2D uSampler;
+    uniform sampler2D ${U_SAMPLER};
     // Program
     void main(void) {
-      gl_FragColor = vColor * texture2D(uSampler, vTextureCoords);
+      gl_FragColor = ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS});
     }
   `;
 
