@@ -68,7 +68,7 @@ export default function App() {
     gl.cullFace(gl.BACK);
 
     let afid = requestAnimationFrame(function f(time) {
-      setTheta(time / 4000 * Math.PI);
+      setTheta(time / 60000 * Math.PI);
       afid = requestAnimationFrame(f);
     });
 
@@ -134,24 +134,29 @@ export default function App() {
       [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => gl.deleteBuffer(buffer));
     }
 
-    // Hours Hand
-    const { vertexCount, positions: positionBuffer, colors: colorBuffer } = makeHandBuffers(gl, 0.8, 0.02);
-    try {
-      gl.useProgram(nonTexProgram);
-      gl.uniformMatrix4fv(nonTexUniforms.modelViewMatrix, false, mat4.rotateZ(modelViewMatrix, modelViewMatrix, -theta));
-      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-      bindAttributeToBuffer(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
-      bindAttributeToBuffer(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
+    const drawHand = function (width: number, length: number, angle: number) {
+      const { vertexCount, positions: positionBuffer, colors: colorBuffer } = makeHandBuffers(gl, width, length);
       try {
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+        gl.useProgram(nonTexProgram);
+        gl.uniformMatrix4fv(nonTexUniforms.modelViewMatrix, false, mat4.rotateZ(mat4.create(), modelViewMatrix, -angle));
+        gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+        bindAttributeToBuffer(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
+        try {
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+        } finally {
+          unbindAttribute(gl, nonTexAttribs.color);
+          unbindAttribute(gl, nonTexAttribs.position);
+        }
       } finally {
-        unbindAttribute(gl, nonTexAttribs.color);
-        unbindAttribute(gl, nonTexAttribs.position);
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(positionBuffer);
       }
-    } finally {
-      gl.deleteBuffer(colorBuffer);
-      gl.deleteBuffer(positionBuffer);
-    }
+    };
+
+    drawHand(0.02, 0.6, theta); // Hours
+    drawHand(0.02, 0.8, 60 * theta); // Minutes
+
   }, [theta]);
 
   return (
@@ -237,7 +242,7 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
   gl.disableVertexAttribArray(attrib);
 }
 
-function makeHandBuffers(gl: WebGLRenderingContext, length: number, width: number) {
+function makeHandBuffers(gl: WebGLRenderingContext, width: number, length: number) {
   return {
     vertexCount: 4,
     positions: makeFloatBufferFromArray(gl, [
