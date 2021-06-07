@@ -37,10 +37,10 @@ const COLORS = [BLUE, GREEN, YELLOW, RED];
 
 export default function App() {
 
-  const [torsion, setTorsion] = useState(0);
+  const [theta, setTheta] = useState(0);
 
-  const textureMappingProgramInfo: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
-  const nonTextureMappingProgramInfo: MutableRefObject<ProgramInfo | null> = useRef(null);
+  const programWithTextureMapping: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
+  const programWithoutTextureMapping: MutableRefObject<ProgramInfo | null> = useRef(null);
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -53,12 +53,8 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    textureMappingProgramInfo.current = makeTextureMappingProgram(gl);
-    nonTextureMappingProgramInfo.current = makeNonTextureMappingProgram(gl);
-
-    gl.useProgram(textureMappingProgramInfo.current.program);
-    gl.uniformMatrix4fv(textureMappingProgramInfo.current.uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
-    gl.uniformMatrix4fv(textureMappingProgramInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
+    programWithTextureMapping.current = makeProgramWithTextureMapping(gl);
+    programWithoutTextureMapping.current = makeProgramWithoutTextureMapping(gl);
 
     for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
       loadTexture(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
@@ -72,7 +68,7 @@ export default function App() {
     gl.cullFace(gl.BACK);
 
     let afid = requestAnimationFrame(function f(time) {
-      setTorsion(time / 4000 * Math.PI);
+      setTheta(time / 4000 * Math.PI);
       afid = requestAnimationFrame(f);
     });
 
@@ -91,11 +87,15 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    if (!textureMappingProgramInfo.current) {
-      throw new Error('No shader program!');
+    if (!programWithTextureMapping.current || !programWithoutTextureMapping.current) {
+      throw new Error('Missing shader program!');
     }
 
-    const { program, attribs, uniforms } = textureMappingProgramInfo.current;
+    const { program: texProgram, attribs: texAttribs, uniforms: texUniforms } = programWithTextureMapping.current;
+    const { program: nonTexProgram, attribs: nonTexAttribs, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
+
+    const projectionMatrix = makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100);
+    const modelViewMatrix = makeModelViewMatrix(4);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -110,23 +110,49 @@ export default function App() {
         positions: positionBuffers[i],
         colors: colorBuffers[i],
         textureCoords: textureCoordBuffers[i],
-      } = makeStripBuffers(gl, torsion, i)
+      } = makeStripBuffers(gl, theta, i)
     );
 
     try {
+      gl.useProgram(texProgram);
+      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.modelViewMatrix, false, modelViewMatrix);
+      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.projectionMatrix, false, projectionMatrix);
       for (let i = 0; i < 4; i++) {
-        gl.useProgram(program);
-        gl.uniform1i(uniforms.sampler, i);
-        bindAttributeToBuffer(gl, attribs.position, positionBuffers[i], 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, attribs.color, colorBuffers[i], 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, attribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCounts[i]);
+        gl.uniform1i(texUniforms.sampler, i);
+        bindAttributeToBuffer(gl, texAttribs.position, positionBuffers[i], 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, texAttribs.color, colorBuffers[i], 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, texAttribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
+        try {
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCounts[i]);
+        } finally {
+          unbindAttribute(gl, texAttribs.textureCoords);
+          unbindAttribute(gl, texAttribs.color);
+          unbindAttribute(gl, texAttribs.position);
+        }
       }
     } finally {
       [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => gl.deleteBuffer(buffer));
     }
 
-  }, [torsion]);
+    // Hours Hand
+    const { vertexCount, positions: positionBuffer, colors: colorBuffer } = makeHandBuffers(gl, 0.8, 0.02);
+    try {
+      gl.useProgram(nonTexProgram);
+      gl.uniformMatrix4fv(nonTexUniforms.modelViewMatrix, false, mat4.rotateZ(modelViewMatrix, modelViewMatrix, -theta));
+      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+      bindAttributeToBuffer(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
+      bindAttributeToBuffer(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
+      try {
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+      } finally {
+        unbindAttribute(gl, nonTexAttribs.color);
+        unbindAttribute(gl, nonTexAttribs.position);
+      }
+    } finally {
+      gl.deleteBuffer(colorBuffer);
+      gl.deleteBuffer(positionBuffer);
+    }
+  }, [theta]);
 
   return (
     <div className="App">
@@ -207,17 +233,39 @@ function bindAttributeToBuffer(gl: WebGLRenderingContext, attrib: number, buffer
   gl.enableVertexAttribArray(attrib);
 }
 
+function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
+  gl.disableVertexAttribArray(attrib);
+}
+
+function makeHandBuffers(gl: WebGLRenderingContext, length: number, width: number) {
+  return {
+    vertexCount: 4,
+    positions: makeFloatBufferFromArray(gl, [
+      -width, 0, 0,
+      +width, 0, 0,
+      -width, length, 0,
+      +width, length, 0,
+    ]),
+    colors: makeFloatBufferFromArray(gl, [
+      0.75, 0.75, 0.75,
+      0.75, 0.75, 0.75,
+      0.75, 0.75, 0.75,
+      0.75, 0.75, 0.75,
+    ]),
+  };
+}
+
 function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: number) {
   const { positions, colors, textureCoords } = makeStrip(torsion, piece);
   return {
     vertexCount: positions.length / 3,
-    positions: makeBufferFromArray(gl, positions),
-    colors: makeBufferFromArray(gl, colors),
-    textureCoords: makeBufferFromArray(gl, textureCoords),
+    positions: makeFloatBufferFromArray(gl, positions),
+    colors: makeFloatBufferFromArray(gl, colors),
+    textureCoords: makeFloatBufferFromArray(gl, textureCoords),
   };
 }
 
-function makeBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
+function makeFloatBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
   const buffer = gl.createBuffer();
   if (!buffer) {
     throw new Error('Failed to create buffer.');
@@ -227,7 +275,7 @@ function makeBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
   return buffer;
 }
 
-function makeStrip(torsion: number, piece: number) {
+function makeStrip(theta: number, piece: number) {
   const textureCoords: number[] = [];
   const positions: number[] = [];
   const colors: number[] = [];
@@ -236,7 +284,7 @@ function makeStrip(torsion: number, piece: number) {
   const h = 0.1;
   for (let s = 0.0; s < 1.001; s += 0.033333) {
     const t = (piece + s) * Math.PI;
-    const tt = nTwists * 0.5 * t - torsion;
+    const tt = nTwists * 0.5 * (t - theta);
     // Position
     const r1 = R - h * Math.cos(tt);
     const r2 = R + h * Math.cos(tt);
@@ -254,7 +302,7 @@ function makeStrip(torsion: number, piece: number) {
   return { positions, colors, textureCoords };
 }
 
-function makeNonTextureMappingProgram(gl: WebGLRenderingContext) {
+function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const A_POSITION = 'aPosition';
@@ -301,7 +349,7 @@ function makeNonTextureMappingProgram(gl: WebGLRenderingContext) {
   };
 }
 
-function makeTextureMappingProgram(gl: WebGLRenderingContext) {
+function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
   const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_SAMPLER = 'uSampler';
