@@ -5,17 +5,24 @@ import { mat4 } from 'gl-matrix';
 import React, { MutableRefObject, useEffect, useRef, useState } from 'react';
 import './App.scss';
 
-type ProgramInfo = {
+interface ProgramInfo {
   program: WebGLProgram;
   attribs: {
     color: number;
     position: number;
+  };
+  uniforms: {
+    modelViewMatrix: WebGLUniformLocation;
+    projectionMatrix: WebGLUniformLocation;
+  };
+}
+
+type TextureMappingProgramInfo = ProgramInfo & {
+  attribs: {
     textureCoords: number;
   };
   uniforms: {
     sampler: WebGLSampler;
-    modelViewMatrix: WebGLUniformLocation;
-    projectionMatrix: WebGLUniformLocation;
   };
 };
 
@@ -32,7 +39,8 @@ export default function App() {
 
   const [torsion, setTorsion] = useState(0);
 
-  const programInfo: MutableRefObject<ProgramInfo | null> = useRef(null);
+  const textureMappingProgramInfo: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
+  const nonTextureMappingProgramInfo: MutableRefObject<ProgramInfo | null> = useRef(null);
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -45,11 +53,12 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    programInfo.current = buildProgram(gl);
+    textureMappingProgramInfo.current = makeTextureMappingProgram(gl);
+    nonTextureMappingProgramInfo.current = makeNonTextureMappingProgram(gl);
 
-    gl.useProgram(programInfo.current.program);
-    gl.uniformMatrix4fv(programInfo.current.uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
-    gl.uniformMatrix4fv(programInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
+    gl.useProgram(textureMappingProgramInfo.current.program);
+    gl.uniformMatrix4fv(textureMappingProgramInfo.current.uniforms.modelViewMatrix, false, makeModelViewMatrix(4));
+    gl.uniformMatrix4fv(textureMappingProgramInfo.current.uniforms.projectionMatrix, false, makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100));
 
     for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
       loadTexture(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
@@ -82,11 +91,13 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    if (!programInfo.current) {
+    if (!textureMappingProgramInfo.current) {
       throw new Error('No shader program!');
     }
 
-    const { attribs, uniforms } = programInfo.current;
+    const { program, attribs, uniforms } = textureMappingProgramInfo.current;
+
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     const vertexCounts: number[] = [];
     const positionBuffers: WebGLBuffer[] = [];
@@ -103,16 +114,13 @@ export default function App() {
     );
 
     try {
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       for (let i = 0; i < 4; i++) {
+        gl.useProgram(program);
         gl.uniform1i(uniforms.sampler, i);
-        render(
-          gl,
-          vertexCounts[i],
-          attribs.position, positionBuffers[i],
-          attribs.color, colorBuffers[i],
-          attribs.textureCoords, textureCoordBuffers[i],
-        );
+        bindAttributeToBuffer(gl, attribs.position, positionBuffers[i], 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, attribs.color, colorBuffers[i], 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, attribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCounts[i]);
       }
     } finally {
       [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => gl.deleteBuffer(buffer));
@@ -132,22 +140,6 @@ export default function App() {
 
 function error<T>(message: string): T {
   throw new Error(message);
-}
-
-function render(
-  gl: WebGLRenderingContext,
-  vertexCount: number,
-  positionAttrib: number,
-  positionBuffer: WebGLBuffer,
-  colorAttrib: number,
-  colorBuffer: WebGLBuffer,
-  texCoordAttrib: number,
-  texCoordBuffer: WebGLBuffer,
-) {
-  bindAttributeToBuffer(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
-  bindAttributeToBuffer(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
-  bindAttributeToBuffer(gl, texCoordAttrib, texCoordBuffer, 2, gl.FLOAT);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
 }
 
 //
@@ -262,7 +254,54 @@ function makeStrip(torsion: number, piece: number) {
   return { positions, colors, textureCoords };
 }
 
-function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
+function makeNonTextureMappingProgram(gl: WebGLRenderingContext) {
+  const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
+  const U_PROJECTION_MATRIX = 'uProjectionMatrix';
+  const A_POSITION = 'aPosition';
+  const A_COLOR = 'aColor';
+  const V_COLOR = 'vColor';
+
+  const vsSource = glsl`
+    // Attributes
+    attribute vec4 ${A_POSITION};
+    attribute vec4 ${A_COLOR};
+    // Uniforms
+    uniform mat4 ${U_MODEL_VIEW_MATRIX};
+    uniform mat4 ${U_PROJECTION_MATRIX};
+    // Varyings
+    varying lowp vec4 ${V_COLOR};
+    // Program
+    void main(void) {
+      gl_Position = ${U_PROJECTION_MATRIX} * ${U_MODEL_VIEW_MATRIX} * ${A_POSITION};
+      ${V_COLOR} = ${A_COLOR};
+    }
+  `;
+
+  const fsSource = glsl`
+    // Varyings
+    varying lowp vec4 ${V_COLOR};
+    // Program
+    void main(void) {
+      gl_FragColor = ${V_COLOR};
+    }
+  `;
+
+  const program = buildProgram(gl, vsSource, fsSource);
+
+  return {
+    program,
+    attribs: {
+      position: gl.getAttribLocation(program, A_POSITION),
+      color: gl.getAttribLocation(program, A_COLOR),
+    },
+    uniforms: {
+      modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
+      projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
+    },
+  };
+}
+
+function makeTextureMappingProgram(gl: WebGLRenderingContext) {
   const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_SAMPLER = 'uSampler';
@@ -303,6 +342,24 @@ function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
     }
   `;
 
+  const program = buildProgram(gl, vsSource, fsSource);
+
+  return {
+    program,
+    attribs: {
+      position: gl.getAttribLocation(program, A_POSITION),
+      color: gl.getAttribLocation(program, A_COLOR),
+      textureCoords: gl.getAttribLocation(program, A_TEXTURE_COORDS),
+    },
+    uniforms: {
+      sampler: getUniformLocation(gl, program, U_SAMPLER),
+      modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
+      projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
+    },
+  };
+}
+
+function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
   const program = gl.createProgram();
 
   if (!program) {
@@ -318,19 +375,7 @@ function buildProgram(gl: WebGLRenderingContext): ProgramInfo {
     throw new Error(message);
   }
 
-  return {
-    program,
-    attribs: {
-      position: gl.getAttribLocation(program, A_POSITION),
-      color: gl.getAttribLocation(program, A_COLOR),
-      textureCoords: gl.getAttribLocation(program, A_TEXTURE_COORDS),
-    },
-    uniforms: {
-      sampler: getUniformLocation(gl, program, U_SAMPLER),
-      modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
-      projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
-    },
-  };
+  return program;
 }
 
 function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, name: string): WebGLUniformLocation {
