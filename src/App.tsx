@@ -94,8 +94,8 @@ export default function App() {
     const { program: texProgram, attribs: texAttribs, uniforms: texUniforms } = programWithTextureMapping.current;
     const { program: nonTexProgram, attribs: nonTexAttribs, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
 
-    const projectionMatrix = makeProjectionMatrix(gl.canvas.width, gl.canvas.height, Math.PI / 5, 0.1, 100);
-    const modelViewMatrix = makeModelViewMatrix(4);
+    const projectionMatrix = mat4.perspective(mat4.create(), Math.PI / 5, gl.canvas.width / gl.canvas.height, 0.1, 100);
+    const modelViewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -448,17 +448,5 @@ function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
     throw new Error(message);
   }
   return shader;
-}
-
-function makeModelViewMatrix(distance: number) {
-  const matrix = mat4.create();
-  mat4.translate(matrix, matrix, [0, 0, -distance]);
-  return matrix;
-}
-
-function makeProjectionMatrix(width: number, height: number, fovy: number, near: number, far: number) {
-  const matrix = mat4.create();
-  mat4.perspective(matrix, fovy, width / height, near, far);
-  return matrix;
 }
 
