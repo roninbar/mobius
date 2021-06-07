@@ -99,6 +99,7 @@ export default function App() {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    // #region Hours Strip
     const vertexCounts: number[] = [];
     const positionBuffers: WebGLBuffer[] = [];
     const colorBuffers: WebGLBuffer[] = [];
@@ -133,7 +134,9 @@ export default function App() {
     } finally {
       [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => gl.deleteBuffer(buffer));
     }
+    // #endregion
 
+    // #region Hands
     const drawHand = function (width: number, length: number, angle: number) {
       const { vertexCount, positions: positionBuffer, colors: colorBuffer } = makeHandBuffers(gl, width, length);
       try {
@@ -156,6 +159,27 @@ export default function App() {
 
     drawHand(0.02, 0.6, theta); // Hours
     drawHand(0.02, 0.8, 60 * theta); // Minutes
+    // #endregion
+
+    // #region Hubcap
+    const { vertexCount, positions, colors } = makeHubcapBuffers(gl);
+    try {
+      gl.useProgram(nonTexProgram);
+      gl.uniformMatrix4fv(nonTexUniforms.modelViewMatrix, false, modelViewMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+      bindAttributeToBuffer(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
+      bindAttributeToBuffer(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
+      try {
+        gl.drawArrays(gl.TRIANGLE_FAN, 0, vertexCount);
+      } finally {
+        unbindAttribute(gl, nonTexAttribs.position);
+        unbindAttribute(gl, nonTexAttribs.color);
+      }
+    } finally {
+      gl.deleteBuffer(colors);
+      gl.deleteBuffer(positions);
+    }
+    // #endregion
 
   }, [theta]);
 
@@ -240,6 +264,21 @@ function bindAttributeToBuffer(gl: WebGLRenderingContext, attrib: number, buffer
 
 function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
   gl.disableVertexAttribArray(attrib);
+}
+
+function makeHubcapBuffers(gl: WebGLRenderingContext) {
+  const r = 0.05;
+  const h = 0.01;
+  const positions = [0, 0, h];
+  for (let t = 0; t < 2 * Math.PI; t += Math.PI / 30) {
+    positions.push(r * Math.cos(t), r * Math.sin(t), 0);
+  }
+  const vertexCount = positions.length / 3;
+  return {
+    vertexCount,
+    positions: makeFloatBufferFromArray(gl, positions),
+    colors: makeFloatBufferFromArray(gl, new Array(3 * vertexCount).fill(0.75)),
+  };
 }
 
 function makeHandBuffers(gl: WebGLRenderingContext, width: number, length: number) {
@@ -419,8 +458,8 @@ function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: str
     throw new Error('Failed to create program.');
   }
 
-  gl.attachShader(program, makeShader(gl, gl.VERTEX_SHADER, vsSource));
-  gl.attachShader(program, makeShader(gl, gl.FRAGMENT_SHADER, fsSource));
+  gl.attachShader(program, buildShader(gl, gl.VERTEX_SHADER, vsSource));
+  gl.attachShader(program, buildShader(gl, gl.FRAGMENT_SHADER, fsSource));
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     const message = `Unable to initialize the shader program: ${gl.getProgramInfoLog(program)}`;
@@ -435,7 +474,7 @@ function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, na
   return gl.getUniformLocation(program, name) || error(`No uniform named "${name}" was found.`);
 }
 
-function makeShader(gl: WebGLRenderingContext, type: number, source: string) {
+function buildShader(gl: WebGLRenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
   if (!shader) {
     throw new Error('Failed to create shader.');
