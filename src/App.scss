@@ -22,6 +22,11 @@
   justify-content: center;
   font-size: calc(10px + 2vmin);
   color: white;
+
+  canvas {
+    max-width: calc(min(90vw, 75vh));
+    max-height: calc(min(90vw, 75vh));
+  }
 }
 
 .App-link {
