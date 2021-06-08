@@ -14,7 +14,7 @@
 importScripts("https://storage.googleapis.com/workbox-cdn/releases/4.3.1/workbox-sw.js");
 
 importScripts(
-  "/mobius/precache-manifest.4b82f2fd6314b103860e48db5d88a07d.js"
+  "/mobius/precache-manifest.6d6979132d8a314c42ab03d28c144440.js"
 );
 
 self.addEventListener('message', (event) => {
