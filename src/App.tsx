@@ -44,7 +44,7 @@ export default function App() {
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
-  // Initialize WebGL stuff and start the animation.
+  // #region Initialize WebGL stuff and start the animation.
   useEffect(() => {
 
     const gl = canvas.current?.getContext('webgl');
@@ -68,7 +68,7 @@ export default function App() {
     gl.cullFace(gl.BACK);
 
     let afid = requestAnimationFrame(function f(time) {
-      setTheta(time / 60000 * Math.PI);
+      setTheta(time / 12000 * Math.PI);
       afid = requestAnimationFrame(f);
     });
 
@@ -77,8 +77,9 @@ export default function App() {
     };
 
   }, []);
+  // #endregion
 
-  // Render one frame.
+  // #region Render one frame.
   useEffect(() => {
 
     const gl = canvas.current?.getContext('webgl');
@@ -158,7 +159,7 @@ export default function App() {
     };
 
     drawHand(0.02, 0.6, theta); // Hours
-    drawHand(0.02, 0.8, 60 * theta); // Minutes
+    drawHand(0.02, 0.8, 12 * theta); // Minutes
     // #endregion
 
     // #region Hubcap
@@ -182,6 +183,7 @@ export default function App() {
     // #endregion
 
   }, [theta]);
+  // #endregion
 
   return (
     <div className="App">
