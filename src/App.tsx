@@ -38,6 +38,8 @@ const COLORS = [BLUE, GREEN, YELLOW, RED];
 export default function App() {
 
   const [theta, setTheta] = useState(0);
+  const [anchor, setAnchor] = useState<{ x: number, y: number; } | null>();
+  const [modelViewMatrix, setModelViewMatrix] = useState(mat4.fromTranslation(mat4.create(), [0, 0, -4]));
 
   const programWithTextureMapping: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
   const programWithoutTextureMapping: MutableRefObject<ProgramInfo | null> = useRef(null);
@@ -96,7 +98,6 @@ export default function App() {
     const { program: nonTexProgram, attribs: nonTexAttribs, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
 
     const projectionMatrix = mat4.perspective(mat4.create(), Math.PI / 5, gl.canvas.width / gl.canvas.height, 0.1, 100);
-    const modelViewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -182,13 +183,48 @@ export default function App() {
     }
     // #endregion
 
-  }, [theta]);
+  }, [theta, modelViewMatrix]);
+  // #endregion
+
+  // #region Event Handlers
+  const onPointerDown = ({ target, pointerId, clientX: x, clientY: y }: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (target instanceof Element) {
+      target.setPointerCapture(pointerId);
+    }
+    setAnchor({ x, y });
+  };
+
+  const onPointerUp = ({ target, pointerId }: React.PointerEvent<HTMLCanvasElement>): void => {
+    setAnchor(null);
+    if (target instanceof Element) {
+      target.releasePointerCapture(pointerId);
+    }
+  };
+
+  const onPointerMove = ({ clientX: x, clientY: y }: React.PointerEvent<HTMLCanvasElement>): void => {
+    if (anchor) {
+      const dx = x - anchor.x;
+      const dy = y - anchor.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > 0) {
+        setModelViewMatrix(mat4.rotate(mat4.create(), modelViewMatrix, 0.01 * distance, [dy, dx, 0]));
+        setAnchor({ x, y });
+      }
+    }
+  };
   // #endregion
 
   return (
     <div className="App">
       <header className="App-header">
-        <canvas width="768px" height="768px" ref={canvas} />
+        <canvas
+          width="768px"
+          height="768px"
+          ref={canvas}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+        />
         <p>M&ouml;bius Clock</p>
       </header>
     </div>
