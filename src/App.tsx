@@ -12,7 +12,8 @@ interface ProgramInfo {
     position: number;
   };
   uniforms: {
-    modelViewMatrix: WebGLUniformLocation;
+    modelMatrix: WebGLUniformLocation;
+    viewMatrix: WebGLUniformLocation;
     projectionMatrix: WebGLUniformLocation;
   };
 }
@@ -39,7 +40,7 @@ export default function App() {
 
   const [theta, setTheta] = useState(0);
   const [anchor, setAnchor] = useState<{ x: number, y: number; } | null>();
-  const [modelViewMatrix, setModelViewMatrix] = useState(mat4.fromTranslation(mat4.create(), [0, 0, -4]));
+  const [modelMatrix, setModelMatrix] = useState(mat4.create());
 
   const programWithTextureMapping: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
   const programWithoutTextureMapping: MutableRefObject<ProgramInfo | null> = useRef(null);
@@ -98,6 +99,7 @@ export default function App() {
     const { program: nonTexProgram, attribs: nonTexAttribs, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
 
     const projectionMatrix = mat4.perspective(mat4.create(), Math.PI / 5, gl.canvas.width / gl.canvas.height, 0.1, 100);
+    const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -118,7 +120,8 @@ export default function App() {
 
     try {
       gl.useProgram(texProgram);
-      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.modelViewMatrix, false, modelViewMatrix);
+      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.modelMatrix, false, modelMatrix);
+      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.viewMatrix, false, viewMatrix);
       gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.projectionMatrix, false, projectionMatrix);
       for (let i = 0; i < 4; i++) {
         gl.uniform1i(texUniforms.sampler, i);
@@ -143,7 +146,8 @@ export default function App() {
       const { vertexCount, positions: positionBuffer, colors: colorBuffer } = makeHandBuffers(gl, width, length);
       try {
         gl.useProgram(nonTexProgram);
-        gl.uniformMatrix4fv(nonTexUniforms.modelViewMatrix, false, mat4.rotateZ(mat4.create(), modelViewMatrix, -angle));
+        gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.rotateZ(mat4.create(), modelMatrix, -angle));
+        gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
         gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
         bindAttributeToBuffer(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
         bindAttributeToBuffer(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
@@ -167,7 +171,8 @@ export default function App() {
     const { vertexCount, positions, colors } = makeHubcapBuffers(gl);
     try {
       gl.useProgram(nonTexProgram);
-      gl.uniformMatrix4fv(nonTexUniforms.modelViewMatrix, false, modelViewMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
       gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
       bindAttributeToBuffer(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
       bindAttributeToBuffer(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
@@ -183,10 +188,10 @@ export default function App() {
     }
     // #endregion
 
-  }, [theta, modelViewMatrix]);
+  }, [theta, modelMatrix]);
   // #endregion
 
-  // #region Event Handlers
+  // #region Event Handlers 
   const onPointerDown = ({ target, pointerId, clientX: x, clientY: y }: React.PointerEvent<HTMLCanvasElement>): void => {
     if (target instanceof Element) {
       target.setPointerCapture(pointerId);
@@ -207,7 +212,8 @@ export default function App() {
       const dy = y - anchor.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       if (distance > 0) {
-        setModelViewMatrix(mat4.rotate(mat4.create(), modelViewMatrix, 0.01 * distance, [dy, dx, 0]));
+        const rot = mat4.fromRotation(mat4.create(), 0.01 * distance, [dy, dx, 0]); 
+        setModelMatrix(mat4.mul(mat4.create(), rot, modelMatrix));
         setAnchor({ x, y });
       }
     }
@@ -385,7 +391,8 @@ function makeStrip(theta: number, piece: number) {
 }
 
 function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
-  const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
+  const U_MODEL_MATRIX = 'uModelMatrix';
+  const U_VIEW_MATRIX = 'uViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const A_POSITION = 'aPosition';
   const A_COLOR = 'aColor';
@@ -396,13 +403,14 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     attribute vec4 ${A_POSITION};
     attribute vec4 ${A_COLOR};
     // Uniforms
-    uniform mat4 ${U_MODEL_VIEW_MATRIX};
+    uniform mat4 ${U_MODEL_MATRIX};
+    uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_PROJECTION_MATRIX};
     // Varyings
     varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
-      gl_Position = ${U_PROJECTION_MATRIX} * ${U_MODEL_VIEW_MATRIX} * ${A_POSITION};
+      gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
       ${V_COLOR} = ${A_COLOR};
     }
   `;
@@ -425,14 +433,16 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
       color: gl.getAttribLocation(program, A_COLOR),
     },
     uniforms: {
-      modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
+      modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
+      viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
       projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
     },
   };
 }
 
 function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
-  const U_MODEL_VIEW_MATRIX = 'uModelViewMatrix';
+  const U_MODEL_MATRIX = 'uModelMatrix';
+  const U_VIEW_MATRIX = 'uViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_SAMPLER = 'uSampler';
   const A_POSITION = 'aPosition';
@@ -447,14 +457,15 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
     attribute vec4 ${A_COLOR};
     attribute vec2 ${A_TEXTURE_COORDS};
     // Uniforms
-    uniform mat4 ${U_MODEL_VIEW_MATRIX};
+    uniform mat4 ${U_MODEL_MATRIX};
+    uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_PROJECTION_MATRIX};
     // Varyings
     varying lowp vec4 ${V_COLOR};
     varying highp vec2 ${V_TEXTURE_COORDS};
     // Program
     void main(void) {
-      gl_Position = ${U_PROJECTION_MATRIX} * ${U_MODEL_VIEW_MATRIX} * ${A_POSITION};
+      gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
       ${V_COLOR} = ${A_COLOR};
       ${V_TEXTURE_COORDS} = ${A_TEXTURE_COORDS};
     }
@@ -483,7 +494,8 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
     },
     uniforms: {
       sampler: getUniformLocation(gl, program, U_SAMPLER),
-      modelViewMatrix: getUniformLocation(gl, program, U_MODEL_VIEW_MATRIX),
+      modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
+      viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
       projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
     },
   };
