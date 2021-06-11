@@ -27,7 +27,7 @@ type TextureMappingProgramInfo = ProgramInfo & {
   };
 };
 
-const glsl = (pieces: TemplateStringsArray, ...args: string[]) => pieces.slice(1).reduce((a, b, i) => a + args[i] + b, pieces[0]);
+const glsl = ([head, ...tail]: TemplateStringsArray, ...args: string[]) => tail.reduce((a, b, i) => a + args[i] + b, head);
 
 const BLUE = [0, 0, 1];
 const GREEN = [0, 1, 0];
