@@ -18,6 +18,12 @@ interface ProgramInfo {
   };
 }
 
+type NonTextureMappingProgramInfo = ProgramInfo & {
+  attribs: {
+    normal: number;
+  };
+};
+
 type TextureMappingProgramInfo = ProgramInfo & {
   attribs: {
     textureCoords: number;
@@ -43,7 +49,7 @@ export default function App() {
   const [modelMatrix, setModelMatrix] = useState(mat4.create());
 
   const programWithTextureMapping: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
-  const programWithoutTextureMapping: MutableRefObject<ProgramInfo | null> = useRef(null);
+  const programWithoutTextureMapping: MutableRefObject<NonTextureMappingProgramInfo | null> = useRef(null);
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -143,23 +149,26 @@ export default function App() {
 
     // #region Hands
     const drawHand = function (width: number, length: number, angle: number) {
-      const { vertexCount, positions: positionBuffer, colors: colorBuffer } = makeHandBuffers(gl, width, length);
+      const { vertexCount, positions, normals, colors } = makeHandBuffers(gl, width, length);
       try {
         gl.useProgram(nonTexProgram);
         gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.rotateZ(mat4.create(), modelMatrix, -angle));
         gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
         gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-        bindAttributeToBuffer(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
+        bindAttributeToBuffer(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
         try {
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
         } finally {
           unbindAttribute(gl, nonTexAttribs.color);
+          unbindAttribute(gl, nonTexAttribs.normal);
           unbindAttribute(gl, nonTexAttribs.position);
         }
       } finally {
-        gl.deleteBuffer(colorBuffer);
-        gl.deleteBuffer(positionBuffer);
+        gl.deleteBuffer(colors);
+        gl.deleteBuffer(normals);
+        gl.deleteBuffer(positions);
       }
     };
 
@@ -168,13 +177,14 @@ export default function App() {
     // #endregion
 
     // #region Hubcap
-    const { vertexCount, positions, colors } = makeHubcapBuffers(gl);
+    const { vertexCount, positions, normals, colors } = makeHubcapBuffers(gl);
     try {
       gl.useProgram(nonTexProgram);
       gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
       gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
       gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
       bindAttributeToBuffer(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
+      bindAttributeToBuffer(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
       bindAttributeToBuffer(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
       try {
         gl.drawArrays(gl.TRIANGLE_FAN, 0, vertexCount);
@@ -212,7 +222,7 @@ export default function App() {
       const dy = y - anchor.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       if (distance > 0) {
-        const rot = mat4.fromRotation(mat4.create(), 0.01 * distance, [dy, dx, 0]); 
+        const rot = mat4.fromRotation(mat4.create(), 0.01 * distance, [dy, dx, 0]);
         setModelMatrix(mat4.mul(mat4.create(), rot, modelMatrix));
         setAnchor({ x, y });
       }
@@ -314,13 +324,16 @@ function makeHubcapBuffers(gl: WebGLRenderingContext) {
   const r = 0.05;
   const h = 0.01;
   const positions = [0, 0, h];
+  const normals = [0, 0, 1];
   for (let t = 0; t < 2 * Math.PI; t += Math.PI / 30) {
     positions.push(r * Math.cos(t), r * Math.sin(t), 0);
+    normals.push(0, 0, 1);
   }
   const vertexCount = positions.length / 3;
   return {
     vertexCount,
     positions: makeFloatBufferFromArray(gl, positions),
+    normals: makeFloatBufferFromArray(gl, normals),
     colors: makeFloatBufferFromArray(gl, new Array(3 * vertexCount).fill(0.75)),
   };
 }
@@ -333,6 +346,12 @@ function makeHandBuffers(gl: WebGLRenderingContext, width: number, length: numbe
       +width, 0, 0,
       -width, length, 0,
       +width, length, 0,
+    ]),
+    normals: makeFloatBufferFromArray(gl, [
+      0, 0, 1,
+      0, 0, 1,
+      0, 0, 1,
+      0, 0, 1,
     ]),
     colors: makeFloatBufferFromArray(gl, [
       0.75, 0.75, 0.75,
@@ -395,12 +414,15 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const U_VIEW_MATRIX = 'uViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const A_POSITION = 'aPosition';
+  const A_NORMAL = 'aNormal';
   const A_COLOR = 'aColor';
   const V_COLOR = 'vColor';
+  const V_LIGHTING = 'vLighting';
 
   const vsSource = glsl`
     // Attributes
     attribute vec4 ${A_POSITION};
+    attribute vec3 ${A_NORMAL};
     attribute vec4 ${A_COLOR};
     // Uniforms
     uniform mat4 ${U_MODEL_MATRIX};
@@ -408,19 +430,28 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     uniform mat4 ${U_PROJECTION_MATRIX};
     // Varyings
     varying lowp vec4 ${V_COLOR};
+    varying lowp vec3 ${V_LIGHTING};
     // Program
     void main(void) {
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
       ${V_COLOR} = ${A_COLOR};
+      // Apply lighting
+      highp vec3 ambientLightColor = vec3(0.3, 0.3, 0.3);
+      highp vec3 directionalLightColor = vec3(1, 1, 1);
+      highp vec3 directionalLightVector = normalize(vec3(0.85, 0.8, 0.75));
+      highp vec4 transformedNormal = ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * vec4(${A_NORMAL}, 0.0);
+      highp float directionalLightIntensity = max(0.0, dot(transformedNormal.xyz, directionalLightVector));
+      ${V_LIGHTING} = ambientLightColor + directionalLightIntensity * directionalLightColor;
     }
   `;
 
   const fsSource = glsl`
     // Varyings
     varying lowp vec4 ${V_COLOR};
+    varying lowp vec3 ${V_LIGHTING};
     // Program
     void main(void) {
-      gl_FragColor = ${V_COLOR};
+      gl_FragColor = ${V_COLOR} * vec4(${V_LIGHTING}, 1.0);
     }
   `;
 
@@ -430,6 +461,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     program,
     attribs: {
       position: gl.getAttribLocation(program, A_POSITION),
+      normal: gl.getAttribLocation(program, A_NORMAL),
       color: gl.getAttribLocation(program, A_COLOR),
     },
     uniforms: {
