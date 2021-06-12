@@ -202,18 +202,14 @@ export default function App() {
   // #endregion
 
   // #region Event Handlers 
-  const onPointerDown = ({ target, pointerId, clientX: x, clientY: y }: React.PointerEvent<HTMLCanvasElement>): void => {
-    if (target instanceof Element) {
-      target.setPointerCapture(pointerId);
-    }
+  const onPointerDown = ({ currentTarget, pointerId, clientX: x, clientY: y }: React.PointerEvent<HTMLCanvasElement>): void => {
+    currentTarget.setPointerCapture(pointerId);
     setAnchor({ x, y });
   };
 
-  const onPointerUp = ({ target, pointerId }: React.PointerEvent<HTMLCanvasElement>): void => {
+  const onPointerUp = ({ currentTarget, pointerId }: React.PointerEvent<HTMLCanvasElement>): void => {
     setAnchor(null);
-    if (target instanceof Element) {
-      target.releasePointerCapture(pointerId);
-    }
+    currentTarget.releasePointerCapture(pointerId);
   };
 
   const onPointerMove = ({ clientX: x, clientY: y }: React.PointerEvent<HTMLCanvasElement>): void => {
