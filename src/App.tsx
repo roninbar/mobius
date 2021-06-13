@@ -44,7 +44,7 @@ const COLORS = [BLUE, GREEN, YELLOW, RED];
 
 export default function App() {
 
-  const [theta, setTheta] = useState(0);
+  const [theta, setTheta] = useState(0); // The angle of the hour hand, in radians.
   const [anchor, setAnchor] = useState<{ x: number, y: number; } | null>();
   const [modelMatrix, setModelMatrix] = useState(mat4.create());
 
@@ -148,8 +148,8 @@ export default function App() {
     // #endregion
 
     // #region Hands
-    const drawHand = function (width: number, length: number, angle: number) {
-      const { vertexCount, positions, normals, colors } = makeHandBuffers(gl, width, length);
+    const drawHand = function (height: number, width: number, length: number, angle: number) {
+      const { vertexCount, positions, normals, colors } = makeHandBuffers(gl, height, width, length);
       try {
         gl.useProgram(nonTexProgram);
         gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.rotateZ(mat4.create(), modelMatrix, -angle));
@@ -172,12 +172,12 @@ export default function App() {
       }
     };
 
-    drawHand(0.02, 0.6, theta); // Hours
-    drawHand(0.02, 0.8, 12 * theta); // Minutes
+    drawHand(0.01, 0.02, 0.6, theta); // Hours
+    drawHand(0.02, 0.02, 0.8, 12 * theta); // Minutes
     // #endregion
 
     // #region Hubcap
-    const { vertexCount, positions, normals, colors } = makeHubcapBuffers(gl);
+    const { vertexCount, positions, normals, colors } = makeHubcapBuffers(gl, 0.03);
     try {
       gl.useProgram(nonTexProgram);
       gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
@@ -316,14 +316,16 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
   gl.disableVertexAttribArray(attrib);
 }
 
-function makeHubcapBuffers(gl: WebGLRenderingContext) {
+function makeHubcapBuffers(gl: WebGLRenderingContext, height: number) {
   const r = 0.05;
   const h = 0.01;
-  const positions = [0, 0, h];
+  const norm = Math.sqrt(r * r + h * h);
+  const nr = r / norm, nh = h / norm;
+  const positions = [0, 0, height + h];
   const normals = [0, 0, 1];
   for (let t = 0; t < 2 * Math.PI; t += Math.PI / 30) {
-    positions.push(r * Math.cos(t), r * Math.sin(t), 0);
-    normals.push(0, 0, 1);
+    positions.push(r * Math.cos(t), r * Math.sin(t), height);
+    normals.push(nh * Math.cos(t), nh * Math.sin(t), nr);
   }
   const vertexCount = positions.length / 3;
   return {
@@ -334,14 +336,14 @@ function makeHubcapBuffers(gl: WebGLRenderingContext) {
   };
 }
 
-function makeHandBuffers(gl: WebGLRenderingContext, width: number, length: number) {
+function makeHandBuffers(gl: WebGLRenderingContext, height: number, width: number, length: number) {
   return {
     vertexCount: 4,
     positions: makeFloatBufferFromArray(gl, [
-      -width, 0, 0,
-      +width, 0, 0,
-      -width, length, 0,
-      +width, length, 0,
+      -width, -8 * width, height,
+      +width, -8 * width, height,
+      -width, length, height,
+      +width, length, height,
     ]),
     normals: makeFloatBufferFromArray(gl, [
       0, 0, 1,
