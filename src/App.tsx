@@ -368,13 +368,13 @@ function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: num
   };
 }
 
-function makeFloatBufferFromArray(gl: WebGLRenderingContext, positions: number[]) {
+function makeFloatBufferFromArray(gl: WebGLRenderingContext, array: number[]) {
   const buffer = gl.createBuffer();
   if (!buffer) {
     throw new Error('Failed to create buffer.');
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(array), gl.STATIC_DRAW);
   return buffer;
 }
 
