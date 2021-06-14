@@ -33,6 +33,12 @@ type TextureMappingProgramInfo = ProgramInfo & {
   };
 };
 
+type Primitive = {
+  mode: number;
+  first: number;
+  count: number;
+};
+
 const glsl = String.raw;
 
 const BLUE = [0, 0, 1];
@@ -78,6 +84,8 @@ export default function App() {
 
     let afid = requestAnimationFrame(function f(time) {
       setTheta(time / 12000 * Math.PI);
+      // const now = new Date();
+      // setTheta(((now.getSeconds() / 60 + now.getMinutes()) / 60 + now.getHours()) / 6 * Math.PI);
       afid = requestAnimationFrame(f);
     });
 
@@ -109,6 +117,42 @@ export default function App() {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+    // #region Inside of Rim
+    {
+      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+      const { topology, positionBuffer, normalBuffer, colorBuffer } = makeRimBuffers(gl);
+      try {
+        gl.useProgram(nonTexProgram);
+        gl.cullFace(gl.FRONT);
+        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer, nonTexAttribs.color, colorBuffer);
+      } finally {
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(normalBuffer);
+        gl.deleteBuffer(colorBuffer);
+      }
+    }
+    // #endregion
+
+    // #region Clock Face
+    {
+      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.translate(mat4.create(), modelMatrix, [0, 0, -0.2]));
+      gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+      const { topology, positionBuffer, normalBuffer, colorBuffer } = makeDiscBuffers(gl);
+      try {
+        gl.useProgram(nonTexProgram);
+        gl.cullFace(gl.BACK);
+        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer, nonTexAttribs.color, colorBuffer);
+      } finally {
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(normalBuffer);
+        gl.deleteBuffer(positionBuffer);
+      }
+    }
+    // #endregion
+
     // #region Hours Strip
     const vertexCounts: number[] = [];
     const positionBuffers: WebGLBuffer[] = [];
@@ -135,6 +179,7 @@ export default function App() {
         bindAttributeToBuffer(gl, texAttribs.color, colorBuffers[i], 3, gl.FLOAT);
         bindAttributeToBuffer(gl, texAttribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
         try {
+          gl.cullFace(gl.BACK);
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCounts[i]);
         } finally {
           unbindAttribute(gl, texAttribs.textureCoords);
@@ -243,6 +288,30 @@ export default function App() {
   );
 }
 
+function drawArrays(
+  gl: WebGLRenderingContext,
+  topology: Primitive[],
+  positionAttrib: number,
+  positionBuffer: WebGLBuffer,
+  normalAttrib: number,
+  normalBuffer: WebGLBuffer,
+  colorAttrib: number,
+  colorBuffer: WebGLBuffer,
+) {
+  bindAttributeToBuffer(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
+  bindAttributeToBuffer(gl, normalAttrib, normalBuffer, 3, gl.FLOAT);
+  bindAttributeToBuffer(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
+  try {
+    for (const { mode, first, count } of topology) {
+      gl.drawArrays(mode, first, count);
+    }
+  } finally {
+    unbindAttribute(gl, colorAttrib);
+    unbindAttribute(gl, normalAttrib);
+    unbindAttribute(gl, positionAttrib);
+  }
+}
+
 function error<T>(message: string): T {
   throw new Error(message);
 }
@@ -316,11 +385,84 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
   gl.disableVertexAttribArray(attrib);
 }
 
+function makeRimBuffers(gl: WebGLRenderingContext) {
+  const R = 1.2, h = 0.1;
+  const positions = [];
+  const normals = [];
+  const colors = [];
+  const topology: Primitive[] = [];
+  for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36) {
+    positions.push(R * Math.cos(t), R * Math.sin(t), +h);
+    normals.push(Math.cos(t), Math.sin(t), 0);
+    colors.push(1.0, 0.8, 0.5);
+    positions.push(R * Math.cos(t), R * Math.sin(t), -h);
+    normals.push(Math.cos(t), Math.sin(t), 0);
+    colors.push(1.0, 0.8, 0.5);
+  }
+  topology.push({ mode: gl.TRIANGLE_STRIP, first: 0, count: positions.length / 3 });
+  return {
+    topology,
+    positionBuffer: makeFloatBufferFromArray(gl, positions),
+    normalBuffer: makeFloatBufferFromArray(gl, normals),
+    colorBuffer: makeFloatBufferFromArray(gl, colors),
+  };
+}
+
+function makeDiscBuffers(gl: WebGLRenderingContext) {
+  const topology: Primitive[] = [];
+  const positions = [0, 0, 0];
+  const colors = [0.25, 0.25, 0.25];
+  const normals = [0, 0, 1];
+  const textureCoords = [0, 0];
+
+  const r = 1;
+  const dr = r / 6;
+
+  let first = 0, v = 1;
+  for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36, v++) {
+    const x = dr * Math.cos(t);
+    const y = dr * Math.sin(t);
+    positions.push(x, y, 0);
+    normals.push(0, 0, 1);
+    colors.push(colors[0], colors[1], colors[2]);
+    textureCoords.push(x / r, y / r);
+  }
+  topology.push({ mode: gl.TRIANGLE_FAN, first, count: v - first });
+  first = v;
+
+  for (let rr = dr; rr < r - 0.001; rr += dr) {
+    for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36, v += 2) {
+      const x0 = rr * Math.cos(t), y0 = rr * Math.sin(t);
+      positions.push(x0, y0, 0);
+      normals.push(0, 0, 1);
+      colors.push(colors[0], colors[1], colors[2]);
+      textureCoords.push(x0 / r, y0 / r);
+
+      const x1 = (rr + dr) * Math.cos(t), y1 = (rr + dr) * Math.sin(t);
+      positions.push(x1, y1, 0);
+      normals.push(0, 0, 1);
+      colors.push(colors[0], colors[1], colors[2]);
+      textureCoords.push(x1 / r, y1 / r);
+    }
+    topology.push({ mode: gl.TRIANGLE_STRIP, first, count: v - first });
+    first = v;
+  }
+
+  return {
+    topology,
+    positionBuffer: makeFloatBufferFromArray(gl, positions),
+    normalBuffer: makeFloatBufferFromArray(gl, normals),
+    colorBuffer: makeFloatBufferFromArray(gl, colors),
+    textureCoordBuffer: makeFloatBufferFromArray(gl, textureCoords),
+  };
+}
+
 function makeHubcapBuffers(gl: WebGLRenderingContext, height: number) {
   const r = 0.05;
   const h = 0.01;
   const norm = Math.sqrt(r * r + h * h);
-  const nr = r / norm, nh = h / norm;
+  const nr = r / norm;
+  const nh = h / norm;
   const positions = [0, 0, height + h];
   const normals = [0, 0, 1];
   for (let t = 0; t < 2 * Math.PI; t += Math.PI / 30) {
@@ -340,8 +482,8 @@ function makeHandBuffers(gl: WebGLRenderingContext, height: number, width: numbe
   return {
     vertexCount: 4,
     positions: makeFloatBufferFromArray(gl, [
-      -width, -8 * width, height,
-      +width, -8 * width, height,
+      -width, -0.2 * length, height,
+      +width, -0.2 * length, height,
       -width, length, height,
       +width, length, height,
     ]),
@@ -431,15 +573,15 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     varying lowp vec3 ${V_LIGHTING};
     // Program
     void main(void) {
-      gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
-      ${V_COLOR} = ${A_COLOR};
       // Apply lighting
       highp vec3 ambientLightColor = vec3(0.3, 0.3, 0.3);
       highp vec3 directionalLightColor = vec3(1, 1, 1);
       highp vec3 directionalLightVector = normalize(vec3(0.85, 0.8, 0.75));
-      highp vec4 transformedNormal = ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * vec4(${A_NORMAL}, 0.0);
-      highp float directionalLightIntensity = max(0.0, dot(transformedNormal.xyz, directionalLightVector));
+      highp vec4 transformedNormal = ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * vec4(${A_NORMAL}, 0);
+      highp float directionalLightIntensity = max(0.0, dot(directionalLightVector, transformedNormal.xyz));
       ${V_LIGHTING} = ambientLightColor + directionalLightIntensity * directionalLightColor;
+      ${V_COLOR} = ${A_COLOR};
+      gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
     }
   `;
 

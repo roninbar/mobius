@@ -13,6 +13,7 @@
     }
   },
   "rules": {
+    "func-names": "off",
     "object-curly-spacing": ["warn", "always"],
     "no-unused-vars": [
       "warn",
@@ -46,12 +47,7 @@
         "ignoreComments": true
       }
     ],
-    "no-plusplus": [
-      "error",
-      {
-        "allowForLoopAfterthoughts": true
-      }
-    ],
+    "no-plusplus": "off",
     "react/jsx-key": "error",
     "import/no-extraneous-dependencies": [
       "error",
