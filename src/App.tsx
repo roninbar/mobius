@@ -391,8 +391,8 @@ function makeStrip(theta: number, piece: number) {
     const t = (piece + s) * Math.PI;
     const tt = nTwists * 0.5 * (t - theta);
     // Position
-    const r1 = R - h * Math.cos(tt);
-    const r2 = R + h * Math.cos(tt);
+    const r1 = R + h * Math.cos(tt);
+    const r2 = R - h * Math.cos(tt);
     positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -h * Math.sin(tt));
     positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
     // Color
