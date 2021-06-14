@@ -175,9 +175,9 @@ export default function App() {
       gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.projectionMatrix, false, projectionMatrix);
       for (let i = 0; i < 4; i++) {
         gl.uniform1i(texUniforms.sampler, i);
-        bindAttributeToBuffer(gl, texAttribs.position, positionBuffers[i], 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, texAttribs.color, colorBuffers[i], 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, texAttribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
+        bindAttribute(gl, texAttribs.position, positionBuffers[i], 3, gl.FLOAT);
+        bindAttribute(gl, texAttribs.color, colorBuffers[i], 3, gl.FLOAT);
+        bindAttribute(gl, texAttribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
         try {
           gl.cullFace(gl.BACK);
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCounts[i]);
@@ -200,9 +200,9 @@ export default function App() {
         gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.rotateZ(mat4.create(), modelMatrix, -angle));
         gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
         gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-        bindAttributeToBuffer(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
-        bindAttributeToBuffer(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
+        bindAttribute(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
+        bindAttribute(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
+        bindAttribute(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
         try {
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
         } finally {
@@ -228,9 +228,9 @@ export default function App() {
       gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
       gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
       gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-      bindAttributeToBuffer(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
-      bindAttributeToBuffer(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
-      bindAttributeToBuffer(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
+      bindAttribute(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
+      bindAttribute(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
+      bindAttribute(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
       try {
         gl.drawArrays(gl.TRIANGLE_FAN, 0, vertexCount);
       } finally {
@@ -288,49 +288,16 @@ export default function App() {
   );
 }
 
-function drawArrays(
-  gl: WebGLRenderingContext,
-  topology: Primitive[],
-  positionAttrib: number,
-  positionBuffer: WebGLBuffer,
-  normalAttrib: number,
-  normalBuffer: WebGLBuffer,
-  colorAttrib: number,
-  colorBuffer: WebGLBuffer,
-) {
-  bindAttributeToBuffer(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
-  bindAttributeToBuffer(gl, normalAttrib, normalBuffer, 3, gl.FLOAT);
-  bindAttributeToBuffer(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
-  try {
-    for (const { mode, first, count } of topology) {
-      gl.drawArrays(mode, first, count);
-    }
-  } finally {
-    unbindAttribute(gl, colorAttrib);
-    unbindAttribute(gl, normalAttrib);
-    unbindAttribute(gl, positionAttrib);
-  }
-}
-
-function error<T>(message: string): T {
-  throw new Error(message);
-}
-
-//
-// Initialize a texture and load an image.
-// When the image finished loading copy it into the texture.
-//
 function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
   const texture = gl.createTexture();
-
-  gl.activeTexture(which);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
 
   // Because images have to be downloaded over the internet
   // they might take a moment until they are ready.
   // Until then put a single pixel in the texture so we can
   // use it immediately. When the image has finished downloading
   // we'll update the texture with the contents of the image.
+  gl.activeTexture(which);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.texImage2D(
     gl.TEXTURE_2D,
     0, // level
@@ -373,16 +340,6 @@ function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
 
 function isPowerOf2(value: number) {
   return (value & (value - 1)) === 0;
-}
-
-function bindAttributeToBuffer(gl: WebGLRenderingContext, attrib: number, buffer: WebGLBuffer, size: number, type: number) {
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.vertexAttribPointer(attrib, size, type, false, 0, 0);
-  gl.enableVertexAttribArray(attrib);
-}
-
-function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
-  gl.disableVertexAttribArray(attrib);
 }
 
 function makeRimBuffers(gl: WebGLRenderingContext) {
@@ -512,16 +469,6 @@ function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: num
   };
 }
 
-function makeFloatBufferFromArray(gl: WebGLRenderingContext, array: number[]) {
-  const buffer = gl.createBuffer();
-  if (!buffer) {
-    throw new Error('Failed to create buffer.');
-  }
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(array), gl.STATIC_DRAW);
-  return buffer;
-}
-
 function makeStrip(theta: number, piece: number) {
   const textureCoords: number[] = [];
   const positions: number[] = [];
@@ -549,6 +496,50 @@ function makeStrip(theta: number, piece: number) {
   return { positions, colors, textureCoords };
 }
 
+function makeFloatBufferFromArray(gl: WebGLRenderingContext, array: number[]) {
+  const buffer = gl.createBuffer();
+  if (!buffer) {
+    throw new Error('Failed to create buffer.');
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(array), gl.STATIC_DRAW);
+  return buffer;
+}
+
+function drawArrays(
+  gl: WebGLRenderingContext,
+  topology: Primitive[],
+  positionAttrib: number,
+  positionBuffer: WebGLBuffer,
+  normalAttrib: number,
+  normalBuffer: WebGLBuffer,
+  colorAttrib: number,
+  colorBuffer: WebGLBuffer,
+) {
+  bindAttribute(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
+  bindAttribute(gl, normalAttrib, normalBuffer, 3, gl.FLOAT);
+  bindAttribute(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
+  try {
+    for (const { mode, first, count } of topology) {
+      gl.drawArrays(mode, first, count);
+    }
+  } finally {
+    unbindAttribute(gl, colorAttrib);
+    unbindAttribute(gl, normalAttrib);
+    unbindAttribute(gl, positionAttrib);
+  }
+}
+
+function bindAttribute(gl: WebGLRenderingContext, attrib: number, buffer: WebGLBuffer, size: number, type: number) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.vertexAttribPointer(attrib, size, type, false, 0, 0);
+  gl.enableVertexAttribArray(attrib);
+}
+
+function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
+  gl.disableVertexAttribArray(attrib);
+}
+
 function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const U_MODEL_MATRIX = 'uModelMatrix';
   const U_VIEW_MATRIX = 'uViewMatrix';
@@ -560,14 +551,14 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const V_LIGHTING = 'vLighting';
 
   const vsSource = glsl`
-    // Attributes
-    attribute vec4 ${A_POSITION};
-    attribute vec3 ${A_NORMAL};
-    attribute vec4 ${A_COLOR};
     // Uniforms
     uniform mat4 ${U_MODEL_MATRIX};
     uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_PROJECTION_MATRIX};
+    // Attributes
+    attribute vec4 ${A_POSITION};
+    attribute vec3 ${A_NORMAL};
+    attribute vec4 ${A_COLOR};
     // Varyings
     varying lowp vec4 ${V_COLOR};
     varying lowp vec3 ${V_LIGHTING};
@@ -692,10 +683,6 @@ function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: str
   return program;
 }
 
-function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, name: string): WebGLUniformLocation {
-  return gl.getUniformLocation(program, name) || error(`No uniform named "${name}" was found.`);
-}
-
 function buildShader(gl: WebGLRenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
   if (!shader) {
@@ -709,5 +696,13 @@ function buildShader(gl: WebGLRenderingContext, type: number, source: string) {
     throw new Error(message);
   }
   return shader;
+}
+
+function getUniformLocation(gl: WebGLRenderingContext, program: WebGLProgram, name: string): WebGLUniformLocation {
+  return gl.getUniformLocation(program, name) || error(`No uniform named "${name}" was found.`);
+}
+
+function error<T>(message: string): T {
+  throw new Error(message);
 }
 
