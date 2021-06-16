@@ -548,7 +548,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const A_NORMAL = 'aNormal';
   const A_COLOR = 'aColor';
   const V_COLOR = 'vColor';
-  const V_LIGHTING = 'vLighting';
+  const V_NORMAL = 'vNormal';
 
   const vsSource = glsl`
     // Uniforms
@@ -560,17 +560,11 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     attribute vec3 ${A_NORMAL};
     attribute vec4 ${A_COLOR};
     // Varyings
+    varying highp vec4 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
-    varying lowp vec3 ${V_LIGHTING};
     // Program
     void main(void) {
-      // Apply lighting
-      highp vec3 ambientLightColor = vec3(0.3, 0.3, 0.3);
-      highp vec3 directionalLightColor = vec3(1, 1, 1);
-      highp vec3 directionalLightVector = normalize(vec3(0.85, 0.8, 0.75));
-      highp vec4 transformedNormal = ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * vec4(${A_NORMAL}, 0);
-      highp float directionalLightIntensity = max(0.0, dot(directionalLightVector, transformedNormal.xyz));
-      ${V_LIGHTING} = ambientLightColor + directionalLightIntensity * directionalLightColor;
+      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * vec4(${A_NORMAL}, 0));
       ${V_COLOR} = ${A_COLOR};
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
     }
@@ -578,11 +572,17 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
 
   const fsSource = glsl`
     // Varyings
+    varying highp vec4 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
-    varying lowp vec3 ${V_LIGHTING};
     // Program
     void main(void) {
-      gl_FragColor = ${V_COLOR} * vec4(${V_LIGHTING}, 1.0);
+      // Apply lighting
+      lowp vec3 ambientLightColor = vec3(0.3, 0.3, 0.3);
+      lowp vec3 directionalLightColor = vec3(1, 1, 1);
+      highp vec3 directionalLightVector = normalize(vec3(0.85, 0.8, 0.75));
+      lowp float directionalLightIntensity = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(directionalLightVector, ${V_NORMAL}.xyz));
+      lowp vec3 lightingColor = ambientLightColor + directionalLightIntensity * directionalLightColor;
+      gl_FragColor = ${V_COLOR} * vec4(lightingColor, 1.0);
     }
   `;
 
