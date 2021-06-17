@@ -252,6 +252,18 @@ export default function App() {
     }
     // #endregion
 
+    // #region Back of Case
+    const m = mat4.copy(mat4.create(), modelMatrix);
+    mat4.translate(m, m, [0, 0, -H]);
+    mat4.rotateX(m, m, Math.PI);
+    gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
+    gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+    drawWithoutTexture(makeFrisbeeBuffers);
+    gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
+    gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
+    drawWithoutTexture(makeRimBuffers);
+    // #endregion
+
   }, [theta, modelMatrix]);
   // #endregion
 
@@ -349,6 +361,57 @@ function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
 
 function isPowerOf2(value: number) {
   return (value & (value - 1)) === 0;
+}
+
+function makeFrisbeeBuffers(gl: WebGLRenderingContext) {
+  const topology: Primitive[] = [];
+  const positions = [0, 0, R];
+  const normals = [0, 0, 1];
+  const colors = [...GOLD];
+
+  let first = 0, v = 1;
+
+  const r = R * Math.sin(STEP);
+  const z = R * Math.cos(STEP);
+
+  for (let f = -Math.PI; f < Math.PI + EPSILON; f += STEP, v++) {
+    const x = r * Math.cos(f), y = r * Math.sin(f);
+
+    positions.push(x, y, z);
+    normals.push(x, y, z);
+    colors.push(...GOLD);
+  }
+
+  topology.push({ mode: gl.TRIANGLE_FAN, first, count: v - first });
+  first = v;
+
+  for (let t = STEP; t < 0.5 * Math.PI - EPSILON; t += STEP) {
+    const r0 = R * Math.sin(t), r1 = R * Math.sin(t + STEP);
+    const z0 = R * Math.cos(t), z1 = R * Math.cos(t + STEP);
+
+    for (let f = -Math.PI; f < Math.PI + EPSILON; f += STEP, v += 2) {
+      const x0 = r0 * Math.cos(f), x1 = r1 * Math.cos(f);
+      const y0 = r0 * Math.sin(f), y1 = r1 * Math.sin(f);
+
+      positions.push(x0, y0, z0);
+      normals.push(x0, y0, z0);
+      colors.push(...GOLD);
+
+      positions.push(x1, y1, z1);
+      normals.push(x1, y1, z1);
+      colors.push(...GOLD);
+    }
+
+    topology.push({ mode: gl.TRIANGLE_STRIP, first, count: v - first });
+    first = v;
+  }
+
+  return {
+    topology,
+    positionBuffer: makeFloatBufferFromArray(gl, positions),
+    normalBuffer: makeFloatBufferFromArray(gl, normals),
+    colorBuffer: makeFloatBufferFromArray(gl, colors),
+  };
 }
 
 function makeRimBuffers(gl: WebGLRenderingContext) {
