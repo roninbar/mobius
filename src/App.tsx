@@ -41,12 +41,19 @@ type Primitive = {
 
 const glsl = String.raw;
 
+const BLACK = [0, 0, 0];
 const BLUE = [0, 0, 1];
 const GREEN = [0, 1, 0];
 const YELLOW = [1, 1, 0];
 const RED = [1, 0, 0];
+const GOLD = [1.0, 0.8, 0.5];
+const SILVER = [0.75, 0.75, 0.75];
 
-const COLORS = [BLUE, GREEN, YELLOW, RED];
+const STRIP_COLORS = [BLUE, GREEN, YELLOW, RED];
+
+const R = 1.0, H = 0.1;
+const STEP = Math.PI / 36;
+const EPSILON = 0.001;
 
 export default function App() {
 
@@ -343,18 +350,17 @@ function isPowerOf2(value: number) {
 }
 
 function makeRimBuffers(gl: WebGLRenderingContext) {
-  const R = 1.2, h = 0.1;
+  const topology: Primitive[] = [];
   const positions = [];
   const normals = [];
   const colors = [];
-  const topology: Primitive[] = [];
-  for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36) {
-    positions.push(R * Math.cos(t), R * Math.sin(t), +h);
+  for (let t = 0; t < 2 * Math.PI + EPSILON; t += STEP) {
+    positions.push(R * Math.cos(t), R * Math.sin(t), +H);
     normals.push(Math.cos(t), Math.sin(t), 0);
-    colors.push(1.0, 0.8, 0.5);
-    positions.push(R * Math.cos(t), R * Math.sin(t), -h);
+    colors.push(...GOLD);
+    positions.push(R * Math.cos(t), R * Math.sin(t), -H);
     normals.push(Math.cos(t), Math.sin(t), 0);
-    colors.push(1.0, 0.8, 0.5);
+    colors.push(...GOLD);
   }
   topology.push({ mode: gl.TRIANGLE_STRIP, first: 0, count: positions.length / 3 });
   return {
@@ -368,7 +374,7 @@ function makeRimBuffers(gl: WebGLRenderingContext) {
 function makeDiscBuffers(gl: WebGLRenderingContext) {
   const topology: Primitive[] = [];
   const positions = [0, 0, 0];
-  const colors = [0.25, 0.25, 0.25];
+  const colors = [...BLACK];
   const normals = [0, 0, 1];
   const textureCoords = [0, 0];
 
@@ -381,7 +387,7 @@ function makeDiscBuffers(gl: WebGLRenderingContext) {
     const y = dr * Math.sin(t);
     positions.push(x, y, 0);
     normals.push(0, 0, 1);
-    colors.push(colors[0], colors[1], colors[2]);
+    colors.push(...BLACK);
     textureCoords.push(x / r, y / r);
   }
   topology.push({ mode: gl.TRIANGLE_FAN, first, count: v - first });
@@ -392,13 +398,13 @@ function makeDiscBuffers(gl: WebGLRenderingContext) {
       const x0 = rr * Math.cos(t), y0 = rr * Math.sin(t);
       positions.push(x0, y0, 0);
       normals.push(0, 0, 1);
-      colors.push(colors[0], colors[1], colors[2]);
+      colors.push(...BLACK);
       textureCoords.push(x0 / r, y0 / r);
 
       const x1 = (rr + dr) * Math.cos(t), y1 = (rr + dr) * Math.sin(t);
       positions.push(x1, y1, 0);
       normals.push(0, 0, 1);
-      colors.push(colors[0], colors[1], colors[2]);
+      colors.push(...BLACK);
       textureCoords.push(x1 / r, y1 / r);
     }
     topology.push({ mode: gl.TRIANGLE_STRIP, first, count: v - first });
@@ -422,16 +428,18 @@ function makeHubcapBuffers(gl: WebGLRenderingContext, height: number) {
   const nh = h / norm;
   const positions = [0, 0, height + h];
   const normals = [0, 0, 1];
+  const colors = [...SILVER];
   for (let t = 0; t < 2 * Math.PI; t += Math.PI / 30) {
     positions.push(r * Math.cos(t), r * Math.sin(t), height);
     normals.push(nh * Math.cos(t), nh * Math.sin(t), nr);
+    colors.push(...SILVER);
   }
   const vertexCount = positions.length / 3;
   return {
     vertexCount,
     positions: makeFloatBufferFromArray(gl, positions),
     normals: makeFloatBufferFromArray(gl, normals),
-    colors: makeFloatBufferFromArray(gl, new Array(3 * vertexCount).fill(0.75)),
+    colors: makeFloatBufferFromArray(gl, colors),
   };
 }
 
@@ -451,10 +459,10 @@ function makeHandBuffers(gl: WebGLRenderingContext, height: number, width: numbe
       0, 0, 1,
     ]),
     colors: makeFloatBufferFromArray(gl, [
-      0.75, 0.75, 0.75,
-      0.75, 0.75, 0.75,
-      0.75, 0.75, 0.75,
-      0.75, 0.75, 0.75,
+      ...SILVER,
+      ...SILVER,
+      ...SILVER,
+      ...SILVER,
     ]),
   };
 }
@@ -474,20 +482,18 @@ function makeStrip(theta: number, piece: number) {
   const positions: number[] = [];
   const colors: number[] = [];
   const nTwists = 3;
-  const R = 1.0;
-  const h = 0.1;
   for (let s = 0.0; s < 1.001; s += 0.033333) {
     const t = (piece + s) * Math.PI;
     const tt = nTwists * 0.5 * (t - theta);
     // Position
-    const r1 = R + h * Math.cos(tt);
-    const r2 = R - h * Math.cos(tt);
-    positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -h * Math.sin(tt));
-    positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +h * Math.sin(tt));
+    const r1 = R + H * Math.cos(tt);
+    const r2 = R - H * Math.cos(tt);
+    positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -H * Math.sin(tt));
+    positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +H * Math.sin(tt));
     // Color
     const color = [0, 0, 0];
     for (let k = 0; k < 3; k++) {
-      color[k] = (1 - s) * COLORS[piece][k] + s * COLORS[(piece + 1) % COLORS.length][k];
+      color[k] = (1 - s) * STRIP_COLORS[piece][k] + s * STRIP_COLORS[(piece + 1) % STRIP_COLORS.length][k];
     }
     colors.push(...color, ...color);
     // Texture Coordinates
