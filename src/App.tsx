@@ -44,13 +44,14 @@ type Primitive = {
 
 const glsl = String.raw;
 
-const BLACK = [0, 0, 0];
+// const BLACK = [0, 0, 0];
 const BLUE = [0, 0, 1];
 const GREEN = [0, 1, 0];
 const YELLOW = [1, 1, 0];
 const RED = [1, 0, 0];
 const GOLD = [1.0, 0.8, 0.5];
 const SILVER = [0.75, 0.75, 0.75];
+const TITANIUM = [0.125, 0.125, 0.125];
 
 const STRIP_COLORS = [BLUE, GREEN, YELLOW, RED];
 
@@ -375,42 +376,21 @@ function makeRimBuffers(gl: WebGLRenderingContext) {
 function makeDiscBuffers(gl: WebGLRenderingContext) {
   const topology: Primitive[] = [];
   const positions = [0, 0, 0];
-  const colors = [...BLACK];
+  const colors = [...TITANIUM];
   const normals = [0, 0, 1];
   const textureCoords = [0, 0];
 
-  const r = 1;
-  const dr = r / 6;
-
   let first = 0, v = 1;
   for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36, v++) {
-    const x = dr * Math.cos(t);
-    const y = dr * Math.sin(t);
+    const x = R * Math.cos(t);
+    const y = R * Math.sin(t);
     positions.push(x, y, 0);
     normals.push(0, 0, 1);
-    colors.push(...BLACK);
-    textureCoords.push(x / r, y / r);
+    colors.push(...TITANIUM);
+    textureCoords.push(x / R, y / R);
   }
   topology.push({ mode: gl.TRIANGLE_FAN, first, count: v - first });
   first = v;
-
-  for (let rr = dr; rr < r - 0.001; rr += dr) {
-    for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36, v += 2) {
-      const x0 = rr * Math.cos(t), y0 = rr * Math.sin(t);
-      positions.push(x0, y0, 0);
-      normals.push(0, 0, 1);
-      colors.push(...BLACK);
-      textureCoords.push(x0 / r, y0 / r);
-
-      const x1 = (rr + dr) * Math.cos(t), y1 = (rr + dr) * Math.sin(t);
-      positions.push(x1, y1, 0);
-      normals.push(0, 0, 1);
-      colors.push(...BLACK);
-      textureCoords.push(x1 / r, y1 / r);
-    }
-    topology.push({ mode: gl.TRIANGLE_STRIP, first, count: v - first });
-    first = v;
-  }
 
   return {
     topology,
