@@ -22,6 +22,9 @@ type NonTextureMappingProgramInfo = ProgramInfo & {
   attribs: {
     normal: number;
   };
+  uniforms: {
+    normalMatrix: WebGLUniformLocation;
+  };
 };
 
 type TextureMappingProgramInfo = ProgramInfo & {
@@ -122,41 +125,40 @@ export default function App() {
     const projectionMatrix = mat4.perspective(mat4.create(), Math.PI / 5, gl.canvas.width / gl.canvas.height, 0.1, 100);
     const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
 
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+    gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
 
-    // #region Inside of Rim
-    {
-      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
-      gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
-      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-      const { topology, positionBuffer, normalBuffer, colorBuffer } = makeRimBuffers(gl);
+    const drawWithoutTexture = function (
+      makeBuffers: (gl: WebGLRenderingContext) => { topology: Primitive[]; positionBuffer: WebGLBuffer; normalBuffer: WebGLBuffer; colorBuffer: WebGLBuffer; }) {
+      const { topology, positionBuffer, normalBuffer, colorBuffer } = makeBuffers(gl);
       try {
         gl.useProgram(nonTexProgram);
-        gl.cullFace(gl.FRONT);
-        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer, nonTexAttribs.color, colorBuffer);
-      } finally {
-        gl.deleteBuffer(colorBuffer);
-        gl.deleteBuffer(normalBuffer);
-        gl.deleteBuffer(colorBuffer);
-      }
-    }
-    // #endregion
-
-    // #region Clock Face
-    {
-      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.translate(mat4.create(), modelMatrix, [0, 0, -0.2]));
-      gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
-      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-      const { topology, positionBuffer, normalBuffer, colorBuffer } = makeDiscBuffers(gl);
-      try {
-        gl.useProgram(nonTexProgram);
-        gl.cullFace(gl.BACK);
         drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer, nonTexAttribs.color, colorBuffer);
       } finally {
         gl.deleteBuffer(colorBuffer);
         gl.deleteBuffer(normalBuffer);
         gl.deleteBuffer(positionBuffer);
       }
+    };
+
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.cullFace(gl.FRONT);
+
+    // #region Inside of Rim
+    gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
+    gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
+    drawWithoutTexture(makeRimBuffers);
+    // #endregion
+
+    gl.cullFace(gl.BACK);
+
+    // #region Clock Face
+    {
+      const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]);
+      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
+      gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
+      drawWithoutTexture(makeDiscBuffers);
     }
     // #endregion
 
@@ -177,9 +179,9 @@ export default function App() {
 
     try {
       gl.useProgram(texProgram);
-      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.modelMatrix, false, modelMatrix);
-      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.viewMatrix, false, viewMatrix);
-      gl.uniformMatrix4fv(programWithTextureMapping.current.uniforms.projectionMatrix, false, projectionMatrix);
+      gl.uniformMatrix4fv(texUniforms.modelMatrix, false, modelMatrix);
+      gl.uniformMatrix4fv(texUniforms.viewMatrix, false, viewMatrix);
+      gl.uniformMatrix4fv(texUniforms.projectionMatrix, false, projectionMatrix);
       for (let i = 0; i < 4; i++) {
         gl.uniform1i(texUniforms.sampler, i);
         bindAttribute(gl, texAttribs.position, positionBuffers[i], 3, gl.FLOAT);
@@ -204,9 +206,9 @@ export default function App() {
       const { vertexCount, positions, normals, colors } = makeHandBuffers(gl, height, width, length);
       try {
         gl.useProgram(nonTexProgram);
-        gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.rotateZ(mat4.create(), modelMatrix, -angle));
-        gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
-        gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+        const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
+        gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, m);
+        gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, m);
         bindAttribute(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
         bindAttribute(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
         bindAttribute(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
@@ -233,8 +235,7 @@ export default function App() {
     try {
       gl.useProgram(nonTexProgram);
       gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
-      gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
-      gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
+      gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, modelMatrix);
       bindAttribute(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
       bindAttribute(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
       bindAttribute(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
@@ -548,6 +549,7 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
 
 function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const U_MODEL_MATRIX = 'uModelMatrix';
+  const U_NORMAL_MATRIX = 'uNormalMatrix';
   const U_VIEW_MATRIX = 'uViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const A_POSITION = 'aPosition';
@@ -559,6 +561,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   const vsSource = glsl`
     // Uniforms
     uniform mat4 ${U_MODEL_MATRIX};
+    uniform mat4 ${U_NORMAL_MATRIX};
     uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_PROJECTION_MATRIX};
     // Attributes
@@ -570,7 +573,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
-      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * vec4(${A_NORMAL}, 0));
+      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0));
       ${V_COLOR} = ${A_COLOR};
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
     }
@@ -583,12 +586,12 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     // Program
     void main(void) {
       // Apply lighting
-      lowp vec3 ambientLightColor = vec3(0.3, 0.3, 0.3);
-      lowp vec3 directionalLightColor = vec3(1, 1, 1);
-      highp vec3 directionalLightVector = normalize(vec3(0.85, 0.8, 0.75));
-      lowp float directionalLightIntensity = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(directionalLightVector, ${V_NORMAL}.xyz));
-      lowp vec3 lightingColor = ambientLightColor + directionalLightIntensity * directionalLightColor;
-      gl_FragColor = ${V_COLOR} * vec4(lightingColor, 1.0);
+      lowp vec3 Ca = vec3(0.3, 0.3, 0.3); // Ambient light color
+      lowp vec3 Cd = vec3(1, 1, 1); // Diffuse light color (white)
+      highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Diffuse light direction
+      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL}.xyz)); // Diffuse intensity
+      lowp vec4 C = vec4(Ca + Id * Cd, 1.0); // Total incident light color
+      gl_FragColor = ${V_COLOR} * C;
     }
   `;
 
@@ -602,6 +605,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
       color: gl.getAttribLocation(program, A_COLOR),
     },
     uniforms: {
+      normalMatrix: getUniformLocation(gl, program, U_NORMAL_MATRIX),
       modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
       viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
       projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
