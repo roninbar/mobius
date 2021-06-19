@@ -54,16 +54,16 @@ interface Actor {
 const glsl = String.raw;
 
 // const BLACK = [0, 0, 0];
-const BLUE = [0, 0, 1];
-const GREEN = [0, 1, 0];
-const YELLOW = [1, 1, 0];
-const RED = [1, 0, 0];
+// const BLUE = [0, 0, 1];
+// const GREEN = [0, 1, 0];
+// const YELLOW = [1, 1, 0];
+// const RED = [1, 0, 0];
 const GOLD = [1.0, 0.8, 0.5];
 const SILVER = [0.75, 0.75, 0.75];
 // const TITANIUM = [0.125, 0.125, 0.125];
 // const WHITE = [1, 1, 1];
 
-const STRIP_COLORS = [BLUE, GREEN, YELLOW, RED];
+const STRIP_COLORS = [SILVER, SILVER, SILVER, SILVER];
 
 const R = 1.0, H = 0.1;
 const STEP = Math.PI / 36;
@@ -625,10 +625,10 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
 }
 
 function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
+  const U_PROJECTION_MATRIX = 'uProjectionMatrix';
+  const U_VIEW_MATRIX = 'uViewMatrix';
   const U_MODEL_MATRIX = 'uModelMatrix';
   const U_NORMAL_MATRIX = 'uNormalMatrix';
-  const U_VIEW_MATRIX = 'uViewMatrix';
-  const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const A_POSITION = 'aPosition';
   const A_NORMAL = 'aNormal';
   const A_COLOR = 'aColor';
@@ -646,11 +646,11 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
     attribute vec3 ${A_NORMAL};
     attribute vec4 ${A_COLOR};
     // Varyings
-    varying highp vec4 ${V_NORMAL};
+    varying highp vec3 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
-      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0));
+      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0)).xyz;
       ${V_COLOR} = ${A_COLOR};
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
     }
@@ -658,16 +658,19 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
 
   const fsSource = glsl`
     // Varyings
-    varying highp vec4 ${V_NORMAL};
+    varying highp vec3 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
       // Apply lighting
       lowp vec3 Ca = vec3(0.3, 0.3, 0.3); // Ambient light color
       lowp vec3 Cd = vec3(1, 1, 1); // Diffuse light color (white)
-      highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Diffuse light direction
-      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL}.xyz)); // Diffuse intensity
-      lowp vec4 C = vec4(Ca + Id * Cd, 1.0); // Total incident light color
+      lowp vec3 Cs = vec3(0, 1, 0); // Specular light color (green)
+      highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Light direction
+      highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
+      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
+      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], 8.0); // Specular intensity
+      lowp vec4 C = vec4(Ca + Id * Cd + Is * Cs, 1.0); // Total incident light color
       gl_FragColor = ${V_COLOR} * C;
     }
   `;
