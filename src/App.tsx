@@ -42,6 +42,14 @@ type Primitive = {
   count: number;
 };
 
+interface Actor {
+  topology: Primitive[];
+  positionBuffer: WebGLBuffer;
+  normalBuffer?: WebGLBuffer;
+  colorBuffer: WebGLBuffer;
+  textureCoordBuffer?: WebGLBuffer;
+}
+
 const glsl = String.raw;
 
 // const BLACK = [0, 0, 0];
@@ -129,16 +137,26 @@ export default function App() {
     gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
     gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
 
-    const drawWithoutTexture = function (
-      makeBuffers: (gl: WebGLRenderingContext) => { topology: Primitive[]; positionBuffer: WebGLBuffer; normalBuffer: WebGLBuffer; colorBuffer: WebGLBuffer; }) {
-      const { topology, positionBuffer, normalBuffer, colorBuffer } = makeBuffers(gl);
+    const drawWithoutTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer }: Actor) {
       try {
         gl.useProgram(nonTexProgram);
-        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer, nonTexAttribs.color, colorBuffer);
+        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.color, colorBuffer, nonTexAttribs.normal, normalBuffer);
       } finally {
-        gl.deleteBuffer(colorBuffer);
-        gl.deleteBuffer(normalBuffer);
-        gl.deleteBuffer(positionBuffer);
+        if (colorBuffer) gl.deleteBuffer(colorBuffer);
+        if (normalBuffer) gl.deleteBuffer(normalBuffer);
+        if (positionBuffer) gl.deleteBuffer(positionBuffer);
+      }
+    };
+
+    const drawWithTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer, textureCoordBuffer }: Actor) {
+      try {
+        gl.useProgram(texProgram);
+        drawArrays(gl, topology, texAttribs.position, positionBuffer, texAttribs.color, colorBuffer, 0, undefined, texAttribs.textureCoords, textureCoordBuffer);
+      } finally {
+        if (textureCoordBuffer) gl.deleteBuffer(textureCoordBuffer);
+        if (colorBuffer) gl.deleteBuffer(colorBuffer);
+        if (normalBuffer) gl.deleteBuffer(normalBuffer);
+        if (positionBuffer) gl.deleteBuffer(positionBuffer);
       }
     };
 
@@ -149,7 +167,7 @@ export default function App() {
     // #region Inside of Rim
     gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
     gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
-    drawWithoutTexture(makeRimBuffers);
+    drawWithoutTexture(makeRimBuffers(gl));
     // #endregion
 
     gl.cullFace(gl.BACK);
@@ -159,7 +177,7 @@ export default function App() {
       const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]);
       gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
       gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
-      drawWithoutTexture(makeDiscBuffers);
+      drawWithoutTexture(makeDiscBuffers(gl));
     }
     // #endregion
 
@@ -167,14 +185,14 @@ export default function App() {
     const vertexCounts: number[] = [];
     const positionBuffers: WebGLBuffer[] = [];
     const colorBuffers: WebGLBuffer[] = [];
-    const textureCoordBuffers: WebGLBuffer[] = [];
+    const textureCoordBuffers: (WebGLBuffer | undefined)[] = [];
 
     for (let i = 0; i < 4; i++) (
       {
-        vertexCount: vertexCounts[i],
-        positions: positionBuffers[i],
-        colors: colorBuffers[i],
-        textureCoords: textureCoordBuffers[i],
+        topology: [{ count: vertexCounts[i] }],
+        positionBuffer: positionBuffers[i],
+        colorBuffer: colorBuffers[i],
+        textureCoordBuffer: textureCoordBuffers[i],
       } = makeStripBuffers(gl, theta, i)
     );
 
@@ -185,20 +203,15 @@ export default function App() {
       gl.uniformMatrix4fv(texUniforms.projectionMatrix, false, projectionMatrix);
       for (let i = 0; i < 4; i++) {
         gl.uniform1i(texUniforms.sampler, i);
-        bindAttribute(gl, texAttribs.position, positionBuffers[i], 3, gl.FLOAT);
-        bindAttribute(gl, texAttribs.color, colorBuffers[i], 3, gl.FLOAT);
-        bindAttribute(gl, texAttribs.textureCoords, textureCoordBuffers[i], 2, gl.FLOAT);
-        try {
-          gl.cullFace(gl.BACK);
-          gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCounts[i]);
-        } finally {
-          unbindAttribute(gl, texAttribs.textureCoords);
-          unbindAttribute(gl, texAttribs.color);
-          unbindAttribute(gl, texAttribs.position);
-        }
+        drawWithTexture({
+          topology: [{ mode: gl.TRIANGLE_STRIP, first: 0, count: vertexCounts[i] }],
+          positionBuffer: positionBuffers[i],
+          colorBuffer: colorBuffers[i],
+          textureCoordBuffer: textureCoordBuffers[i],
+        });
       }
     } finally {
-      [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => gl.deleteBuffer(buffer));
+      [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => buffer && gl.deleteBuffer(buffer));
     }
     // #endregion
 
@@ -258,10 +271,10 @@ export default function App() {
     mat4.rotateX(m, m, Math.PI);
     gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
     gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
-    drawWithoutTexture(makeFrisbeeBuffers);
+    drawWithoutTexture(makeFrisbeeBuffers(gl));
     gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
     gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
-    drawWithoutTexture(makeRimBuffers);
+    drawWithoutTexture(makeRimBuffers(gl));
     // #endregion
 
   }, [theta, modelMatrix]);
@@ -363,7 +376,7 @@ function isPowerOf2(value: number) {
   return (value & (value - 1)) === 0;
 }
 
-function makeFrisbeeBuffers(gl: WebGLRenderingContext) {
+function makeFrisbeeBuffers(gl: WebGLRenderingContext): Actor {
   const topology: Primitive[] = [];
   const positions = [0, 0, R];
   const normals = [0, 0, 1];
@@ -511,13 +524,13 @@ function makeHandBuffers(gl: WebGLRenderingContext, height: number, width: numbe
   };
 }
 
-function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: number) {
+function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: number): Actor {
   const { positions, colors, textureCoords } = makeStrip(torsion, piece);
   return {
-    vertexCount: positions.length / 3,
-    positions: makeFloatBufferFromArray(gl, positions),
-    colors: makeFloatBufferFromArray(gl, colors),
-    textureCoords: makeFloatBufferFromArray(gl, textureCoords),
+    topology: [{ mode: gl.TRIANGLE_STRIP, first: 0, count: positions.length / 3 }],
+    positionBuffer: makeFloatBufferFromArray(gl, positions),
+    colorBuffer: makeFloatBufferFromArray(gl, colors),
+    textureCoordBuffer: makeFloatBufferFromArray(gl, textureCoords),
   };
 }
 
@@ -561,21 +574,33 @@ function drawArrays(
   topology: Primitive[],
   positionAttrib: number,
   positionBuffer: WebGLBuffer,
-  normalAttrib: number,
-  normalBuffer: WebGLBuffer,
   colorAttrib: number,
   colorBuffer: WebGLBuffer,
+  normalAttrib?: number,
+  normalBuffer?: WebGLBuffer,
+  texCoordAttrib?: number,
+  texCoordBuffer?: WebGLBuffer,
 ) {
   bindAttribute(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
-  bindAttribute(gl, normalAttrib, normalBuffer, 3, gl.FLOAT);
   bindAttribute(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
+  if (normalBuffer && typeof normalAttrib === 'number') {
+    bindAttribute(gl, normalAttrib, normalBuffer, 3, gl.FLOAT);
+  }
+  if (texCoordBuffer && typeof texCoordAttrib === 'number') {
+    bindAttribute(gl, texCoordAttrib, texCoordBuffer, 2, gl.FLOAT);
+  }
   try {
     for (const { mode, first, count } of topology) {
       gl.drawArrays(mode, first, count);
     }
   } finally {
+    if (texCoordBuffer && typeof texCoordAttrib === 'number') {
+      unbindAttribute(gl, texCoordAttrib);
+    }
+    if (normalBuffer && typeof normalAttrib === 'number') {
+      unbindAttribute(gl, normalAttrib);
+    }
     unbindAttribute(gl, colorAttrib);
-    unbindAttribute(gl, normalAttrib);
     unbindAttribute(gl, positionAttrib);
   }
 }
