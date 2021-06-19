@@ -1,7 +1,7 @@
 /* eslint-disable one-var */
 /* eslint-disable no-bitwise */
 
-import { mat4 } from 'gl-matrix';
+import { mat3, mat4 } from 'gl-matrix';
 import React, { MutableRefObject, useEffect, useRef, useState } from 'react';
 import './App.scss';
 
@@ -33,6 +33,7 @@ type TextureMappingProgramInfo = ProgramInfo & {
   };
   uniforms: {
     sampler: WebGLSampler;
+    textureMatrix: WebGLUniformLocation;
   };
 };
 
@@ -59,7 +60,8 @@ const YELLOW = [1, 1, 0];
 const RED = [1, 0, 0];
 const GOLD = [1.0, 0.8, 0.5];
 const SILVER = [0.75, 0.75, 0.75];
-const TITANIUM = [0.125, 0.125, 0.125];
+// const TITANIUM = [0.125, 0.125, 0.125];
+// const WHITE = [1, 1, 1];
 
 const STRIP_COLORS = [BLUE, GREEN, YELLOW, RED];
 
@@ -93,6 +95,8 @@ export default function App() {
     for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
       loadTexture(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
     }
+
+    loadTexture(gl, gl.TEXTURE10, `${process.env.PUBLIC_URL}/texture/mobius.png`);
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -133,6 +137,7 @@ export default function App() {
 
     const projectionMatrix = mat4.perspective(mat4.create(), Math.PI / 5, gl.canvas.width / gl.canvas.height, 0.1, 100);
     const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
+    const textureMatrix = mat3.create();
 
     gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
     gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
@@ -174,10 +179,14 @@ export default function App() {
 
     // #region Clock Face
     {
+      gl.useProgram(texProgram);
       const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]);
-      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
-      gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
-      drawWithoutTexture(makeDiscBuffers(gl));
+      gl.uniformMatrix4fv(texUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
+      const t = mat3.scale(mat3.create(), mat3.translate(mat3.create(), textureMatrix, [0.5, 0.5]), [0.75, -0.75]);
+      // gl.uniformMatrix4fv(texUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
+      gl.uniformMatrix3fv(texUniforms.textureMatrix, false, t);
+      gl.uniform1i(texUniforms.sampler, 10);
+      drawWithTexture(makeDiscBuffers(gl));
     }
     // #endregion
 
@@ -198,9 +207,10 @@ export default function App() {
 
     try {
       gl.useProgram(texProgram);
-      gl.uniformMatrix4fv(texUniforms.modelMatrix, false, modelMatrix);
-      gl.uniformMatrix4fv(texUniforms.viewMatrix, false, viewMatrix);
       gl.uniformMatrix4fv(texUniforms.projectionMatrix, false, projectionMatrix);
+      gl.uniformMatrix4fv(texUniforms.viewMatrix, false, viewMatrix);
+      gl.uniformMatrix4fv(texUniforms.modelMatrix, false, modelMatrix);
+      gl.uniformMatrix3fv(texUniforms.textureMatrix, false, textureMatrix);
       for (let i = 0; i < 4; i++) {
         gl.uniform1i(texUniforms.sampler, i);
         drawWithTexture({
@@ -349,6 +359,9 @@ function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
     gl.activeTexture(which);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     // WebGL1 has different requirements for power of 2 images
     // vs non power of 2 images so check if the image is a
@@ -356,14 +369,10 @@ function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
     if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
       // Yes, it's a power of 2. Generate mips.
       gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     } else {
       // No, it's not a power of 2. Turn off mips and set
       // wrapping to clamp to edge.
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     }
   };
@@ -452,17 +461,17 @@ function makeRimBuffers(gl: WebGLRenderingContext) {
 function makeDiscBuffers(gl: WebGLRenderingContext) {
   const topology: Primitive[] = [];
   const positions = [0, 0, 0];
-  const colors = [...TITANIUM];
+  const colors = [...SILVER];
   const normals = [0, 0, 1];
   const textureCoords = [0, 0];
 
   let first = 0, v = 1;
-  for (let t = 0; t < 2 * Math.PI + 0.001; t += Math.PI / 36, v++) {
+  for (let t = 0; t < 2 * Math.PI + EPSILON; t += STEP, v++) {
     const x = R * Math.cos(t);
     const y = R * Math.sin(t);
     positions.push(x, y, 0);
     normals.push(0, 0, 1);
-    colors.push(...TITANIUM);
+    colors.push(...SILVER);
     textureCoords.push(x / R, y / R);
   }
   topology.push({ mode: gl.TRIANGLE_FAN, first, count: v - first });
@@ -682,9 +691,10 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
 }
 
 function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
-  const U_MODEL_MATRIX = 'uModelMatrix';
-  const U_VIEW_MATRIX = 'uViewMatrix';
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
+  const U_VIEW_MATRIX = 'uViewMatrix';
+  const U_MODEL_MATRIX = 'uModelMatrix';
+  const U_TEXTURE_MATRIX = 'uTextureMatrix';
   const U_SAMPLER = 'uSampler';
   const A_POSITION = 'aPosition';
   const A_COLOR = 'aColor';
@@ -698,29 +708,30 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
     attribute vec4 ${A_COLOR};
     attribute vec2 ${A_TEXTURE_COORDS};
     // Uniforms
-    uniform mat4 ${U_MODEL_MATRIX};
-    uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_PROJECTION_MATRIX};
+    uniform mat4 ${U_VIEW_MATRIX};
+    uniform mat4 ${U_MODEL_MATRIX};
+    uniform mat3 ${U_TEXTURE_MATRIX};
     // Varyings
     varying lowp vec4 ${V_COLOR};
-    varying highp vec2 ${V_TEXTURE_COORDS};
+    varying highp vec3 ${V_TEXTURE_COORDS};
     // Program
     void main(void) {
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
       ${V_COLOR} = ${A_COLOR};
-      ${V_TEXTURE_COORDS} = ${A_TEXTURE_COORDS};
+      ${V_TEXTURE_COORDS} = ${U_TEXTURE_MATRIX} * vec3(${A_TEXTURE_COORDS}, 1);
     }
   `;
 
   const fsSource = glsl`
     // Varyings
     varying lowp vec4 ${V_COLOR};
-    varying highp vec2 ${V_TEXTURE_COORDS};
+    varying highp vec3 ${V_TEXTURE_COORDS};
     // Uniforms
     uniform sampler2D ${U_SAMPLER};
     // Program
     void main(void) {
-      gl_FragColor = ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS});
+      gl_FragColor = ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
     }
   `;
 
@@ -735,6 +746,7 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
     },
     uniforms: {
       sampler: getUniformLocation(gl, program, U_SAMPLER),
+      textureMatrix: getUniformLocation(gl, program, U_TEXTURE_MATRIX),
       modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
       viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
       projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
