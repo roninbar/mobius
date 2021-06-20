@@ -8,22 +8,22 @@ import './App.scss';
 interface ProgramInfo {
   program: WebGLProgram;
   attribs: {
-    color: number;
     position: number;
+    normal: number;
+    color: number;
   };
   uniforms: {
-    modelMatrix: WebGLUniformLocation;
-    viewMatrix: WebGLUniformLocation;
     projectionMatrix: WebGLUniformLocation;
+    viewMatrix: WebGLUniformLocation;
+    modelMatrix: WebGLUniformLocation;
+    normalMatrix: WebGLUniformLocation;
   };
 }
 
 type NonTextureMappingProgramInfo = ProgramInfo & {
   attribs: {
-    normal: number;
   };
   uniforms: {
-    normalMatrix: WebGLUniformLocation;
   };
 };
 
@@ -46,14 +46,14 @@ type Primitive = {
 interface Actor {
   topology: Primitive[];
   positionBuffer: WebGLBuffer;
-  normalBuffer?: WebGLBuffer;
+  normalBuffer: WebGLBuffer;
   colorBuffer: WebGLBuffer;
   textureCoordBuffer?: WebGLBuffer;
 }
 
 const glsl = String.raw;
 
-// const BLACK = [0, 0, 0];
+// const BLACK = [0, 0, 0];  
 // const BLUE = [0, 0, 1];
 // const GREEN = [0, 1, 0];
 // const YELLOW = [1, 1, 0];
@@ -139,6 +139,7 @@ export default function App() {
     const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
     const textureMatrix = mat3.create();
 
+    gl.useProgram(nonTexProgram);
     gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
     gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
 
@@ -156,7 +157,7 @@ export default function App() {
     const drawWithTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer, textureCoordBuffer }: Actor) {
       try {
         gl.useProgram(texProgram);
-        drawArrays(gl, topology, texAttribs.position, positionBuffer, texAttribs.color, colorBuffer, 0, undefined, texAttribs.textureCoords, textureCoordBuffer);
+        drawArrays(gl, topology, texAttribs.position, positionBuffer, texAttribs.color, colorBuffer, texAttribs.normal, normalBuffer, texAttribs.textureCoords, textureCoordBuffer);
       } finally {
         if (textureCoordBuffer) gl.deleteBuffer(textureCoordBuffer);
         if (colorBuffer) gl.deleteBuffer(colorBuffer);
@@ -170,9 +171,10 @@ export default function App() {
     gl.cullFace(gl.FRONT);
 
     // #region Inside of Rim
+    gl.useProgram(nonTexProgram);
     gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
     gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
-    drawWithoutTexture(makeRimBuffers(gl));
+    drawWithoutTexture(makeRim(gl));
     // #endregion
 
     gl.cullFace(gl.BACK);
@@ -183,70 +185,47 @@ export default function App() {
       const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]);
       gl.uniformMatrix4fv(texUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
       const t = mat3.scale(mat3.create(), mat3.translate(mat3.create(), textureMatrix, [0.5, 0.5]), [0.75, -0.75]);
-      // gl.uniformMatrix4fv(texUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
+      gl.uniformMatrix4fv(texUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
       gl.uniformMatrix3fv(texUniforms.textureMatrix, false, t);
       gl.uniform1i(texUniforms.sampler, 10);
-      drawWithTexture(makeDiscBuffers(gl));
+      drawWithTexture(makeDisc(gl));
     }
     // #endregion
 
     // #region Hours Strip
-    const vertexCounts: number[] = [];
-    const positionBuffers: WebGLBuffer[] = [];
-    const colorBuffers: WebGLBuffer[] = [];
-    const textureCoordBuffers: (WebGLBuffer | undefined)[] = [];
-
-    for (let i = 0; i < 4; i++) (
-      {
-        topology: [{ count: vertexCounts[i] }],
-        positionBuffer: positionBuffers[i],
-        colorBuffer: colorBuffers[i],
-        textureCoordBuffer: textureCoordBuffers[i],
-      } = makeStripBuffers(gl, theta, i)
-    );
-
-    try {
-      gl.useProgram(texProgram);
-      gl.uniformMatrix4fv(texUniforms.projectionMatrix, false, projectionMatrix);
-      gl.uniformMatrix4fv(texUniforms.viewMatrix, false, viewMatrix);
-      gl.uniformMatrix4fv(texUniforms.modelMatrix, false, modelMatrix);
-      gl.uniformMatrix3fv(texUniforms.textureMatrix, false, textureMatrix);
-      for (let i = 0; i < 4; i++) {
-        gl.uniform1i(texUniforms.sampler, i);
-        drawWithTexture({
-          topology: [{ mode: gl.TRIANGLE_STRIP, first: 0, count: vertexCounts[i] }],
-          positionBuffer: positionBuffers[i],
-          colorBuffer: colorBuffers[i],
-          textureCoordBuffer: textureCoordBuffers[i],
-        });
-      }
-    } finally {
-      [...positionBuffers, ...colorBuffers, ...textureCoordBuffers].forEach((buffer) => buffer && gl.deleteBuffer(buffer));
+    gl.useProgram(texProgram);
+    gl.uniformMatrix4fv(texUniforms.projectionMatrix, false, projectionMatrix);
+    gl.uniformMatrix4fv(texUniforms.viewMatrix, false, viewMatrix);
+    gl.uniformMatrix4fv(texUniforms.modelMatrix, false, modelMatrix);
+    gl.uniformMatrix3fv(texUniforms.textureMatrix, false, textureMatrix);
+    for (let i = 0; i < 4; i++) {
+      gl.uniform1i(texUniforms.sampler, i);
+      drawWithTexture(makeStrip(gl, theta, i));
     }
     // #endregion
 
     // #region Hands
     const drawHand = function (height: number, width: number, length: number, angle: number) {
-      const { vertexCount, positions, normals, colors } = makeHandBuffers(gl, height, width, length);
+      const { topology: [{ mode, first, count }], positionBuffer, normalBuffer, colorBuffer } = makeHand(gl, height, width, length);
       try {
         gl.useProgram(nonTexProgram);
         const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
         gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, m);
         gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, m);
-        bindAttribute(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
-        bindAttribute(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
-        bindAttribute(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
+        bindAttribute(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
+        bindAttribute(gl, nonTexAttribs.normal, normalBuffer, 3, gl.FLOAT);
+        bindAttribute(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
         try {
-          gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertexCount);
+          gl.drawArrays(mode, first, count);
         } finally {
           unbindAttribute(gl, nonTexAttribs.color);
           unbindAttribute(gl, nonTexAttribs.normal);
           unbindAttribute(gl, nonTexAttribs.position);
         }
       } finally {
-        gl.deleteBuffer(colors);
-        gl.deleteBuffer(normals);
-        gl.deleteBuffer(positions);
+        gl.deleteBuffer(colorBuffer);
+        gl.deleteBuffer(normalBuffer);
+        gl.deleteBuffer(positionBuffer);
       }
     };
 
@@ -255,36 +234,34 @@ export default function App() {
     // #endregion
 
     // #region Hubcap
-    const { vertexCount, positions, normals, colors } = makeHubcapBuffers(gl, 0.03);
+    const { topology: [{ mode, first, count }], positionBuffer, normalBuffer, colorBuffer } = makeHubcap(gl, 0.03);
     try {
       gl.useProgram(nonTexProgram);
       gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
       gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, modelMatrix);
-      bindAttribute(gl, nonTexAttribs.position, positions, 3, gl.FLOAT);
-      bindAttribute(gl, nonTexAttribs.normal, normals, 3, gl.FLOAT);
-      bindAttribute(gl, nonTexAttribs.color, colors, 3, gl.FLOAT);
+      bindAttribute(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
+      bindAttribute(gl, nonTexAttribs.normal, normalBuffer, 3, gl.FLOAT);
+      bindAttribute(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
       try {
-        gl.drawArrays(gl.TRIANGLE_FAN, 0, vertexCount);
+        gl.drawArrays(mode, first, count);
       } finally {
         unbindAttribute(gl, nonTexAttribs.position);
         unbindAttribute(gl, nonTexAttribs.color);
       }
     } finally {
-      gl.deleteBuffer(colors);
-      gl.deleteBuffer(positions);
+      gl.deleteBuffer(colorBuffer);
+      gl.deleteBuffer(positionBuffer);
     }
     // #endregion
 
     // #region Back of Case
-    const m = mat4.copy(mat4.create(), modelMatrix);
-    mat4.translate(m, m, [0, 0, -H]);
-    mat4.rotateX(m, m, Math.PI);
+    const m = mat4.rotateX(mat4.create(), mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]), Math.PI);
     gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
     gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
-    drawWithoutTexture(makeFrisbeeBuffers(gl));
+    drawWithoutTexture(makeFrisbee(gl));
     gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
     gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
-    drawWithoutTexture(makeRimBuffers(gl));
+    drawWithoutTexture(makeRim(gl));
     // #endregion
 
   }, [theta, modelMatrix]);
@@ -385,7 +362,7 @@ function isPowerOf2(value: number) {
   return (value & (value - 1)) === 0;
 }
 
-function makeFrisbeeBuffers(gl: WebGLRenderingContext): Actor {
+function makeFrisbee(gl: WebGLRenderingContext): Actor {
   const topology: Primitive[] = [];
   const positions = [0, 0, R];
   const normals = [0, 0, 1];
@@ -436,7 +413,7 @@ function makeFrisbeeBuffers(gl: WebGLRenderingContext): Actor {
   };
 }
 
-function makeRimBuffers(gl: WebGLRenderingContext) {
+function makeRim(gl: WebGLRenderingContext): Actor {
   const topology: Primitive[] = [];
   const positions = [];
   const normals = [];
@@ -458,7 +435,7 @@ function makeRimBuffers(gl: WebGLRenderingContext) {
   };
 }
 
-function makeDiscBuffers(gl: WebGLRenderingContext) {
+function makeDisc(gl: WebGLRenderingContext): Actor {
   const topology: Primitive[] = [];
   const positions = [0, 0, 0];
   const colors = [...SILVER];
@@ -486,7 +463,7 @@ function makeDiscBuffers(gl: WebGLRenderingContext) {
   };
 }
 
-function makeHubcapBuffers(gl: WebGLRenderingContext, height: number) {
+function makeHubcap(gl: WebGLRenderingContext, height: number): Actor {
   const r = 0.05;
   const h = 0.01;
   const norm = Math.sqrt(r * r + h * h);
@@ -500,31 +477,31 @@ function makeHubcapBuffers(gl: WebGLRenderingContext, height: number) {
     normals.push(nh * Math.cos(t), nh * Math.sin(t), nr);
     colors.push(...SILVER);
   }
-  const vertexCount = positions.length / 3;
+  const count = positions.length / 3;
   return {
-    vertexCount,
-    positions: makeFloatBufferFromArray(gl, positions),
-    normals: makeFloatBufferFromArray(gl, normals),
-    colors: makeFloatBufferFromArray(gl, colors),
+    topology: [{ mode: gl.TRIANGLE_FAN, first: 0, count }],
+    positionBuffer: makeFloatBufferFromArray(gl, positions),
+    normalBuffer: makeFloatBufferFromArray(gl, normals),
+    colorBuffer: makeFloatBufferFromArray(gl, colors),
   };
 }
 
-function makeHandBuffers(gl: WebGLRenderingContext, height: number, width: number, length: number) {
+function makeHand(gl: WebGLRenderingContext, height: number, width: number, length: number): Actor {
   return {
-    vertexCount: 4,
-    positions: makeFloatBufferFromArray(gl, [
+    topology: [{ mode: gl.TRIANGLE_STRIP, first: 0, count: 4 }],
+    positionBuffer: makeFloatBufferFromArray(gl, [
       -width, -0.2 * length, height,
       +width, -0.2 * length, height,
       -width, length, height,
       +width, length, height,
     ]),
-    normals: makeFloatBufferFromArray(gl, [
+    normalBuffer: makeFloatBufferFromArray(gl, [
       0, 0, 1,
       0, 0, 1,
       0, 0, 1,
       0, 0, 1,
     ]),
-    colors: makeFloatBufferFromArray(gl, [
+    colorBuffer: makeFloatBufferFromArray(gl, [
       ...SILVER,
       ...SILVER,
       ...SILVER,
@@ -533,29 +510,36 @@ function makeHandBuffers(gl: WebGLRenderingContext, height: number, width: numbe
   };
 }
 
-function makeStripBuffers(gl: WebGLRenderingContext, torsion: number, piece: number): Actor {
-  const { positions, colors, textureCoords } = makeStrip(torsion, piece);
+function makeStrip(gl: WebGLRenderingContext, torsion: number, piece: number): Actor {
+  const { positions, normals, colors, textureCoords } = makeStripArrays(torsion, piece);
   return {
     topology: [{ mode: gl.TRIANGLE_STRIP, first: 0, count: positions.length / 3 }],
     positionBuffer: makeFloatBufferFromArray(gl, positions),
+    normalBuffer: makeFloatBufferFromArray(gl, normals),
     colorBuffer: makeFloatBufferFromArray(gl, colors),
     textureCoordBuffer: makeFloatBufferFromArray(gl, textureCoords),
   };
 }
 
-function makeStrip(theta: number, piece: number) {
+function makeStripArrays(theta: number, piece: number) {
   const textureCoords: number[] = [];
   const positions: number[] = [];
+  const normals: number[] = [];
   const colors: number[] = [];
   const nTwists = 3;
   for (let s = 0.0; s < 1.001; s += 0.033333) {
     const t = (piece + s) * Math.PI;
     const tt = nTwists * 0.5 * (t - theta);
+    const ct = Math.cos(t), st = Math.sin(t);
+    const ctt = Math.cos(tt), stt = Math.sin(tt);
     // Position
     const r1 = R + H * Math.cos(tt);
     const r2 = R - H * Math.cos(tt);
     positions.push(r1 * Math.sin(t), r1 * Math.cos(t), -H * Math.sin(tt));
     positions.push(r2 * Math.sin(t), r2 * Math.cos(t), +H * Math.sin(tt));
+    // Normal
+    normals.push(-st * stt, -ct * stt, ct * ct * ctt + ctt * st * st);
+    normals.push(-st * stt, -ct * stt, ct * ct * ctt + ctt * st * st);
     // Color
     const color = [0, 0, 0];
     for (let k = 0; k < 3; k++) {
@@ -565,7 +549,7 @@ function makeStrip(theta: number, piece: number) {
     // Texture Coordinates
     textureCoords.push(s, 0, s, 1);
   }
-  return { positions, colors, textureCoords };
+  return { positions, normals, colors, textureCoords };
 }
 
 function makeFloatBufferFromArray(gl: WebGLRenderingContext, array: number[]) {
@@ -624,14 +608,17 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
   gl.disableVertexAttribArray(attrib);
 }
 
-function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
+function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTextureMappingProgramInfo {
+  // Uniform Names
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_VIEW_MATRIX = 'uViewMatrix';
   const U_MODEL_MATRIX = 'uModelMatrix';
   const U_NORMAL_MATRIX = 'uNormalMatrix';
+  // Attribute Names
   const A_POSITION = 'aPosition';
   const A_NORMAL = 'aNormal';
   const A_COLOR = 'aColor';
+  // Varyings Names
   const V_COLOR = 'vColor';
   const V_NORMAL = 'vNormal';
 
@@ -665,13 +652,13 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
       // Apply lighting
       lowp vec3 Ca = vec3(0.3, 0.3, 0.3); // Ambient light color
       lowp vec3 Cd = vec3(1, 1, 1); // Diffuse light color (white)
-      lowp vec3 Cs = vec3(0, 1, 0); // Specular light color (green)
+      lowp vec3 Cs = vec3(1, 1, 1); // Specular light color (white)
       highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Light direction
       highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
-      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], 8.0); // Specular intensity
+      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], 10.0); // Specular intensity
       lowp vec4 C = vec4(Ca + Id * Cd + Is * Cs, 1.0); // Total incident light color
-      gl_FragColor = ${V_COLOR} * C;
+      gl_FragColor = C * ${V_COLOR};
     }
   `;
 
@@ -693,34 +680,44 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext) {
   };
 }
 
-function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
+function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappingProgramInfo {
+  // Uniform Names
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_VIEW_MATRIX = 'uViewMatrix';
   const U_MODEL_MATRIX = 'uModelMatrix';
+  const U_NORMAL_MATRIX = 'uNormalMatrix';
   const U_TEXTURE_MATRIX = 'uTextureMatrix';
   const U_SAMPLER = 'uSampler';
+  // Attribute Names
   const A_POSITION = 'aPosition';
+  const A_NORMAL = 'aNormal';
   const A_COLOR = 'aColor';
   const A_TEXTURE_COORDS = 'aTextureCoords';
+  // Varyings Names
+  const V_NORMAL = 'vNormal';
   const V_COLOR = 'vColor';
   const V_TEXTURE_COORDS = 'vTextureCoords';
 
   const vsSource = glsl`
     // Attributes
     attribute vec4 ${A_POSITION};
+    attribute vec3 ${A_NORMAL};
     attribute vec4 ${A_COLOR};
     attribute vec2 ${A_TEXTURE_COORDS};
     // Uniforms
     uniform mat4 ${U_PROJECTION_MATRIX};
     uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_MODEL_MATRIX};
+    uniform mat4 ${U_NORMAL_MATRIX};
     uniform mat3 ${U_TEXTURE_MATRIX};
     // Varyings
+    varying highp vec3 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
     varying highp vec3 ${V_TEXTURE_COORDS};
     // Program
     void main(void) {
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
+      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0)).xyz;
       ${V_COLOR} = ${A_COLOR};
       ${V_TEXTURE_COORDS} = ${U_TEXTURE_MATRIX} * vec3(${A_TEXTURE_COORDS}, 1);
     }
@@ -728,13 +725,23 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
 
   const fsSource = glsl`
     // Varyings
+    varying highp vec3 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
     varying highp vec3 ${V_TEXTURE_COORDS};
     // Uniforms
     uniform sampler2D ${U_SAMPLER};
     // Program
     void main(void) {
-      gl_FragColor = ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
+      // Apply lighting
+      lowp vec3 Ca = vec3(0.3, 0.3, 0.3); // Ambient light color
+      lowp vec3 Cd = vec3(1, 1, 1); // Diffuse light color (white)
+      lowp vec3 Cs = vec3(1, 1, 1); // Specular light color (white)
+      highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Light direction
+      highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
+      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
+      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], 10.0); // Specular intensity
+      lowp vec4 C = vec4(Ca + Id * Cd + Is * Cs, 1.0); // Total incident light color
+      gl_FragColor = C * ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
     }
   `;
 
@@ -745,11 +752,13 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext) {
     attribs: {
       position: gl.getAttribLocation(program, A_POSITION),
       color: gl.getAttribLocation(program, A_COLOR),
+      normal: gl.getAttribLocation(program, A_NORMAL),
       textureCoords: gl.getAttribLocation(program, A_TEXTURE_COORDS),
     },
     uniforms: {
       sampler: getUniformLocation(gl, program, U_SAMPLER),
       textureMatrix: getUniformLocation(gl, program, U_TEXTURE_MATRIX),
+      normalMatrix: getUniformLocation(gl, program, U_NORMAL_MATRIX),
       modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
       viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
       projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
