@@ -13,10 +13,19 @@ interface ProgramInfo {
     color: number;
   };
   uniforms: {
-    projectionMatrix: WebGLUniformLocation;
-    viewMatrix: WebGLUniformLocation;
-    modelMatrix: WebGLUniformLocation;
-    normalMatrix: WebGLUniformLocation;
+    matrices: {
+      projection: WebGLUniformLocation;
+      view: WebGLUniformLocation;
+      model: WebGLUniformLocation;
+      normal: WebGLUniformLocation;
+    },
+    light: {
+      direction: WebGLUniformLocation;
+      ambientColor: WebGLUniformLocation;
+      diffuseColor: WebGLUniformLocation;
+      specularColor: WebGLUniformLocation;
+      specularity: WebGLUniformLocation;
+    },
   };
 }
 
@@ -32,8 +41,10 @@ type TextureMappingProgramInfo = ProgramInfo & {
     textureCoords: number;
   };
   uniforms: {
+    matrices: {
+      texture: WebGLUniformLocation;
+    };
     sampler: WebGLSampler;
-    textureMatrix: WebGLUniformLocation;
   };
 };
 
@@ -53,7 +64,9 @@ interface Actor {
 
 const glsl = String.raw;
 
-// const BLACK = [0, 0, 0];  
+const LIGHTDIR = [0.85, 0.8, 0.75];
+
+const BLACK = [0, 0, 0];
 // const BLUE = [0, 0, 1];
 // const GREEN = [0, 1, 0];
 // const YELLOW = [1, 1, 0];
@@ -61,9 +74,11 @@ const glsl = String.raw;
 const GOLD = [1.0, 0.8, 0.5];
 const SILVER = [0.75, 0.75, 0.75];
 // const TITANIUM = [0.125, 0.125, 0.125];
-// const WHITE = [1, 1, 1];
+const WHITE = [1, 1, 1];
+const WHITE25 = [0.25, 0.25, 0.25];
+const WHITE50 = [0.5, 0.5, 0.5];
 
-const STRIP_COLORS = [SILVER, SILVER, SILVER, SILVER];
+const STRIP_COLORS = [WHITE50, WHITE50, WHITE50, WHITE50];
 
 const R = 1.0, H = 0.1;
 const STEP = Math.PI / 36;
@@ -91,6 +106,23 @@ export default function App() {
 
     programWithTextureMapping.current = makeProgramWithTextureMapping(gl);
     programWithoutTextureMapping.current = makeProgramWithoutTextureMapping(gl);
+
+    const { program: texProgram, uniforms: texUniforms } = programWithTextureMapping.current;
+    const { program: nonTexProgram, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
+
+    gl.useProgram(texProgram);
+    gl.uniform3fv(texUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(texUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(texUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(texUniforms.light.specularColor, WHITE);
+    gl.uniform1f(texUniforms.light.specularity, 10);
+
+    gl.useProgram(nonTexProgram);
+    gl.uniform3fv(nonTexUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(nonTexUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(nonTexUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
+    gl.uniform1f(nonTexUniforms.light.specularity, 10);
 
     for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
       loadTexture(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
@@ -139,13 +171,16 @@ export default function App() {
     const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
     const textureMatrix = mat3.create();
 
+    gl.useProgram(texProgram);
+    gl.uniformMatrix4fv(texUniforms.matrices.projection, false, projectionMatrix);
+    gl.uniformMatrix4fv(texUniforms.matrices.view, false, viewMatrix);
+
     gl.useProgram(nonTexProgram);
-    gl.uniformMatrix4fv(nonTexUniforms.projectionMatrix, false, projectionMatrix);
-    gl.uniformMatrix4fv(nonTexUniforms.viewMatrix, false, viewMatrix);
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.projection, false, projectionMatrix);
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.view, false, viewMatrix);
 
     const drawWithoutTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer }: Actor) {
       try {
-        gl.useProgram(nonTexProgram);
         drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.color, colorBuffer, nonTexAttribs.normal, normalBuffer);
       } finally {
         if (colorBuffer) gl.deleteBuffer(colorBuffer);
@@ -156,7 +191,6 @@ export default function App() {
 
     const drawWithTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer, textureCoordBuffer }: Actor) {
       try {
-        gl.useProgram(texProgram);
         drawArrays(gl, topology, texAttribs.position, positionBuffer, texAttribs.color, colorBuffer, texAttribs.normal, normalBuffer, texAttribs.textureCoords, textureCoordBuffer);
       } finally {
         if (textureCoordBuffer) gl.deleteBuffer(textureCoordBuffer);
@@ -172,8 +206,8 @@ export default function App() {
 
     // #region Inside of Rim
     gl.useProgram(nonTexProgram);
-    gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
-    gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
     drawWithoutTexture(makeRim(gl));
     // #endregion
 
@@ -181,12 +215,17 @@ export default function App() {
 
     // #region Clock Face
     {
-      gl.useProgram(texProgram);
       const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]);
-      gl.uniformMatrix4fv(texUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
       const t = mat3.scale(mat3.create(), mat3.translate(mat3.create(), textureMatrix, [0.5, 0.5]), [0.75, -0.75]);
-      gl.uniformMatrix4fv(texUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
-      gl.uniformMatrix3fv(texUniforms.textureMatrix, false, t);
+      gl.useProgram(texProgram);
+      gl.uniform3fv(texUniforms.light.direction, LIGHTDIR);
+      gl.uniform3fv(texUniforms.light.ambientColor, WHITE25);
+      gl.uniform3fv(texUniforms.light.diffuseColor, WHITE);
+      gl.uniform3fv(texUniforms.light.specularColor, BLACK);
+      gl.uniform1f(texUniforms.light.specularity, 10);
+      gl.uniformMatrix4fv(texUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.199, 1.199, 1]));
+      gl.uniformMatrix4fv(texUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1]));
+      gl.uniformMatrix3fv(texUniforms.matrices.texture, false, t);
       gl.uniform1i(texUniforms.sampler, 10);
       drawWithTexture(makeDisc(gl));
     }
@@ -194,10 +233,13 @@ export default function App() {
 
     // #region Hours Strip
     gl.useProgram(texProgram);
-    gl.uniformMatrix4fv(texUniforms.projectionMatrix, false, projectionMatrix);
-    gl.uniformMatrix4fv(texUniforms.viewMatrix, false, viewMatrix);
-    gl.uniformMatrix4fv(texUniforms.modelMatrix, false, modelMatrix);
-    gl.uniformMatrix3fv(texUniforms.textureMatrix, false, textureMatrix);
+    gl.uniform3fv(texUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(texUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(texUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(texUniforms.light.specularColor, WHITE);
+    gl.uniform1f(texUniforms.light.specularity, 8);
+    gl.uniformMatrix4fv(texUniforms.matrices.model, false, modelMatrix);
+    gl.uniformMatrix3fv(texUniforms.matrices.texture, false, textureMatrix);
     for (let i = 0; i < 4; i++) {
       gl.uniform1i(texUniforms.sampler, i);
       drawWithTexture(makeStrip(gl, theta, i));
@@ -205,62 +247,36 @@ export default function App() {
     // #endregion
 
     // #region Hands
+    gl.useProgram(nonTexProgram);
+    gl.uniform3fv(nonTexUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(nonTexUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(nonTexUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
+    gl.uniform1f(nonTexUniforms.light.specularity, 20);
     const drawHand = function (height: number, width: number, length: number, angle: number) {
-      const { topology: [{ mode, first, count }], positionBuffer, normalBuffer, colorBuffer } = makeHand(gl, height, width, length);
-      try {
-        gl.useProgram(nonTexProgram);
-        const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
-        gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, m);
-        gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, m);
-        bindAttribute(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
-        bindAttribute(gl, nonTexAttribs.normal, normalBuffer, 3, gl.FLOAT);
-        bindAttribute(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
-        try {
-          gl.drawArrays(mode, first, count);
-        } finally {
-          unbindAttribute(gl, nonTexAttribs.color);
-          unbindAttribute(gl, nonTexAttribs.normal);
-          unbindAttribute(gl, nonTexAttribs.position);
-        }
-      } finally {
-        gl.deleteBuffer(colorBuffer);
-        gl.deleteBuffer(normalBuffer);
-        gl.deleteBuffer(positionBuffer);
-      }
+      const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
+      gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, m);
+      gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, m);
+      drawWithoutTexture(makeHand(gl, height, width, length));
     };
-
     drawHand(0.01, 0.02, 0.6, theta); // Hours
     drawHand(0.02, 0.02, 0.8, 12 * theta); // Minutes
     // #endregion
 
     // #region Hubcap
-    const { topology: [{ mode, first, count }], positionBuffer, normalBuffer, colorBuffer } = makeHubcap(gl, 0.03);
-    try {
-      gl.useProgram(nonTexProgram);
-      gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, modelMatrix);
-      gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, modelMatrix);
-      bindAttribute(gl, nonTexAttribs.position, positionBuffer, 3, gl.FLOAT);
-      bindAttribute(gl, nonTexAttribs.normal, normalBuffer, 3, gl.FLOAT);
-      bindAttribute(gl, nonTexAttribs.color, colorBuffer, 3, gl.FLOAT);
-      try {
-        gl.drawArrays(mode, first, count);
-      } finally {
-        unbindAttribute(gl, nonTexAttribs.position);
-        unbindAttribute(gl, nonTexAttribs.color);
-      }
-    } finally {
-      gl.deleteBuffer(colorBuffer);
-      gl.deleteBuffer(positionBuffer);
-    }
+    gl.useProgram(nonTexProgram);
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, modelMatrix);
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, modelMatrix);
+    drawWithoutTexture(makeHubcap(gl, 0.03));
     // #endregion
 
     // #region Back of Case
     const m = mat4.rotateX(mat4.create(), mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]), Math.PI);
-    gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
-    gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
     drawWithoutTexture(makeFrisbee(gl));
-    gl.uniformMatrix4fv(nonTexUniforms.modelMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
-    gl.uniformMatrix4fv(nonTexUniforms.normalMatrix, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
+    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
     drawWithoutTexture(makeRim(gl));
     // #endregion
 
@@ -614,6 +630,11 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
   const U_VIEW_MATRIX = 'uViewMatrix';
   const U_MODEL_MATRIX = 'uModelMatrix';
   const U_NORMAL_MATRIX = 'uNormalMatrix';
+  const U_LIGHT_DIRECTION = 'uLightDirection';
+  const U_AMBIENT_COLOR = 'uCa';
+  const U_DIFFUSE_COLOR = 'uCd';
+  const U_SPECULAR_COLOR = 'uCs';
+  const U_SPECULARITY = 'uSpecularity';
   // Attribute Names
   const A_POSITION = 'aPosition';
   const A_NORMAL = 'aNormal';
@@ -644,20 +665,23 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
   `;
 
   const fsSource = glsl`
+    // Uniforms
+    uniform highp vec3 ${U_LIGHT_DIRECTION};
+    uniform lowp vec3 ${U_AMBIENT_COLOR};
+    uniform lowp vec3 ${U_DIFFUSE_COLOR};
+    uniform lowp vec3 ${U_SPECULAR_COLOR};
+    uniform lowp float ${U_SPECULARITY};
     // Varyings
     varying highp vec3 ${V_NORMAL};
     varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
       // Apply lighting
-      lowp vec3 Ca = vec3(0.3, 0.3, 0.3); // Ambient light color
-      lowp vec3 Cd = vec3(1, 1, 1); // Diffuse light color (white)
-      lowp vec3 Cs = vec3(1, 1, 1); // Specular light color (white)
-      highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Light direction
+      highp vec3 u = normalize(${U_LIGHT_DIRECTION});
       highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
-      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], 10.0); // Specular intensity
-      lowp vec4 C = vec4(Ca + Id * Cd + Is * Cs, 1.0); // Total incident light color
+      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
+      lowp vec4 C = vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR} + Is * ${U_SPECULAR_COLOR}, 1.0); // Total incident light color
       gl_FragColor = C * ${V_COLOR};
     }
   `;
@@ -672,10 +696,19 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
       color: gl.getAttribLocation(program, A_COLOR),
     },
     uniforms: {
-      normalMatrix: getUniformLocation(gl, program, U_NORMAL_MATRIX),
-      modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
-      viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
-      projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
+      matrices: {
+        projection: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
+        view: getUniformLocation(gl, program, U_VIEW_MATRIX),
+        model: getUniformLocation(gl, program, U_MODEL_MATRIX),
+        normal: getUniformLocation(gl, program, U_NORMAL_MATRIX),
+      },
+      light: {
+        direction: getUniformLocation(gl, program, U_LIGHT_DIRECTION),
+        ambientColor: getUniformLocation(gl, program, U_AMBIENT_COLOR),
+        diffuseColor: getUniformLocation(gl, program, U_DIFFUSE_COLOR),
+        specularColor: getUniformLocation(gl, program, U_SPECULAR_COLOR),
+        specularity: getUniformLocation(gl, program, U_SPECULARITY),
+      },
     },
   };
 }
@@ -688,6 +721,11 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
   const U_NORMAL_MATRIX = 'uNormalMatrix';
   const U_TEXTURE_MATRIX = 'uTextureMatrix';
   const U_SAMPLER = 'uSampler';
+  const U_LIGHT_DIRECTION = 'uLightDirection';
+  const U_AMBIENT_COLOR = 'uCa';
+  const U_DIFFUSE_COLOR = 'uCd';
+  const U_SPECULAR_COLOR = 'uCs';
+  const U_SPECULARITY = 'uSpecularity';
   // Attribute Names
   const A_POSITION = 'aPosition';
   const A_NORMAL = 'aNormal';
@@ -729,18 +767,20 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
     varying lowp vec4 ${V_COLOR};
     varying highp vec3 ${V_TEXTURE_COORDS};
     // Uniforms
+    uniform highp vec3 ${U_LIGHT_DIRECTION};
+    uniform lowp vec3 ${U_AMBIENT_COLOR};
+    uniform lowp vec3 ${U_DIFFUSE_COLOR};
+    uniform lowp vec3 ${U_SPECULAR_COLOR};
+    uniform lowp float ${U_SPECULARITY};
     uniform sampler2D ${U_SAMPLER};
     // Program
     void main(void) {
       // Apply lighting
-      lowp vec3 Ca = vec3(0.3, 0.3, 0.3); // Ambient light color
-      lowp vec3 Cd = vec3(1, 1, 1); // Diffuse light color (white)
-      lowp vec3 Cs = vec3(1, 1, 1); // Specular light color (white)
-      highp vec3 u = normalize(vec3(0.85, 0.8, 0.75)); // Light direction
+      highp vec3 u = normalize(${U_LIGHT_DIRECTION}); // Light direction
       highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
-      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], 10.0); // Specular intensity
-      lowp vec4 C = vec4(Ca + Id * Cd + Is * Cs, 1.0); // Total incident light color
+      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
+      lowp vec4 C = vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR} + Is * ${U_SPECULAR_COLOR}, 1.0); // Total incident light color
       gl_FragColor = C * ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
     }
   `;
@@ -756,12 +796,21 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
       textureCoords: gl.getAttribLocation(program, A_TEXTURE_COORDS),
     },
     uniforms: {
+      matrices: {
+        projection: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
+        view: getUniformLocation(gl, program, U_VIEW_MATRIX),
+        model: getUniformLocation(gl, program, U_MODEL_MATRIX),
+        normal: getUniformLocation(gl, program, U_NORMAL_MATRIX),
+        texture: getUniformLocation(gl, program, U_TEXTURE_MATRIX),
+      },
+      light: {
+        direction: getUniformLocation(gl, program, U_LIGHT_DIRECTION),
+        ambientColor: getUniformLocation(gl, program, U_AMBIENT_COLOR),
+        diffuseColor: getUniformLocation(gl, program, U_DIFFUSE_COLOR),
+        specularColor: getUniformLocation(gl, program, U_SPECULAR_COLOR),
+        specularity: getUniformLocation(gl, program, U_SPECULARITY),
+      },
       sampler: getUniformLocation(gl, program, U_SAMPLER),
-      textureMatrix: getUniformLocation(gl, program, U_TEXTURE_MATRIX),
-      normalMatrix: getUniformLocation(gl, program, U_NORMAL_MATRIX),
-      modelMatrix: getUniformLocation(gl, program, U_MODEL_MATRIX),
-      viewMatrix: getUniformLocation(gl, program, U_VIEW_MATRIX),
-      projectionMatrix: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
     },
   };
 }
