@@ -10,7 +10,6 @@ interface ProgramInfo {
   attribs: {
     position: number;
     normal: number;
-    color: number;
   };
   uniforms: {
     matrices: {
@@ -26,6 +25,7 @@ interface ProgramInfo {
       specularColor: WebGLUniformLocation;
       specularity: WebGLUniformLocation;
     },
+    color: WebGLUniformLocation;
   };
 }
 
@@ -181,7 +181,7 @@ export default function App() {
 
     const drawWithoutTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer }: Actor) {
       try {
-        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.color, colorBuffer, nonTexAttribs.normal, normalBuffer);
+        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer);
       } finally {
         if (colorBuffer) gl.deleteBuffer(colorBuffer);
         if (normalBuffer) gl.deleteBuffer(normalBuffer);
@@ -191,7 +191,7 @@ export default function App() {
 
     const drawWithTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer, textureCoordBuffer }: Actor) {
       try {
-        drawArrays(gl, topology, texAttribs.position, positionBuffer, texAttribs.color, colorBuffer, texAttribs.normal, normalBuffer, texAttribs.textureCoords, textureCoordBuffer);
+        drawArrays(gl, topology, texAttribs.position, positionBuffer, texAttribs.normal, normalBuffer, texAttribs.textureCoords, textureCoordBuffer);
       } finally {
         if (textureCoordBuffer) gl.deleteBuffer(textureCoordBuffer);
         if (colorBuffer) gl.deleteBuffer(colorBuffer);
@@ -218,6 +218,7 @@ export default function App() {
       const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]);
       const t = mat3.scale(mat3.create(), mat3.translate(mat3.create(), textureMatrix, [0.5, 0.5]), [0.75, -0.75]);
       gl.useProgram(texProgram);
+      gl.uniform4fv(texUniforms.color, [...WHITE, 1]);
       gl.uniform3fv(texUniforms.light.direction, LIGHTDIR);
       gl.uniform3fv(texUniforms.light.ambientColor, WHITE25);
       gl.uniform3fv(texUniforms.light.diffuseColor, WHITE);
@@ -274,9 +275,11 @@ export default function App() {
     const m = mat4.rotateX(mat4.create(), mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]), Math.PI);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
     gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+    gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
     drawWithoutTexture(makeFrisbee(gl));
     gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
     gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
+    gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
     drawWithoutTexture(makeRim(gl));
     // #endregion
 
@@ -583,15 +586,12 @@ function drawArrays(
   topology: Primitive[],
   positionAttrib: number,
   positionBuffer: WebGLBuffer,
-  colorAttrib: number,
-  colorBuffer: WebGLBuffer,
   normalAttrib?: number,
   normalBuffer?: WebGLBuffer,
   texCoordAttrib?: number,
   texCoordBuffer?: WebGLBuffer,
 ) {
   bindAttribute(gl, positionAttrib, positionBuffer, 3, gl.FLOAT);
-  bindAttribute(gl, colorAttrib, colorBuffer, 3, gl.FLOAT);
   if (normalBuffer && typeof normalAttrib === 'number') {
     bindAttribute(gl, normalAttrib, normalBuffer, 3, gl.FLOAT);
   }
@@ -609,7 +609,6 @@ function drawArrays(
     if (normalBuffer && typeof normalAttrib === 'number') {
       unbindAttribute(gl, normalAttrib);
     }
-    unbindAttribute(gl, colorAttrib);
     unbindAttribute(gl, positionAttrib);
   }
 }
@@ -635,12 +634,11 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
   const U_DIFFUSE_COLOR = 'uCd';
   const U_SPECULAR_COLOR = 'uCs';
   const U_SPECULARITY = 'uSpecularity';
+  const U_COLOR = 'uColor';
   // Attribute Names
   const A_POSITION = 'aPosition';
   const A_NORMAL = 'aNormal';
-  const A_COLOR = 'aColor';
-  // Varyings Names
-  const V_COLOR = 'vColor';
+  // Varying Names
   const V_NORMAL = 'vNormal';
 
   const vsSource = glsl`
@@ -652,14 +650,11 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
     // Attributes
     attribute vec4 ${A_POSITION};
     attribute vec3 ${A_NORMAL};
-    attribute vec4 ${A_COLOR};
     // Varyings
     varying highp vec3 ${V_NORMAL};
-    varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
       ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0)).xyz;
-      ${V_COLOR} = ${A_COLOR};
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
     }
   `;
@@ -671,9 +666,9 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
     uniform lowp vec3 ${U_DIFFUSE_COLOR};
     uniform lowp vec3 ${U_SPECULAR_COLOR};
     uniform lowp float ${U_SPECULARITY};
+    uniform lowp vec4 ${U_COLOR};
     // Varyings
     varying highp vec3 ${V_NORMAL};
-    varying lowp vec4 ${V_COLOR};
     // Program
     void main(void) {
       // Apply lighting
@@ -682,7 +677,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
       lowp vec4 C = vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR} + Is * ${U_SPECULAR_COLOR}, 1.0); // Total incident light color
-      gl_FragColor = C * ${V_COLOR};
+      gl_FragColor = C * ${U_COLOR};
     }
   `;
 
@@ -693,7 +688,6 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
     attribs: {
       position: gl.getAttribLocation(program, A_POSITION),
       normal: gl.getAttribLocation(program, A_NORMAL),
-      color: gl.getAttribLocation(program, A_COLOR),
     },
     uniforms: {
       matrices: {
@@ -709,6 +703,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
         specularColor: getUniformLocation(gl, program, U_SPECULAR_COLOR),
         specularity: getUniformLocation(gl, program, U_SPECULARITY),
       },
+      color: getUniformLocation(gl, program, U_COLOR),
     },
   };
 }
@@ -726,21 +721,19 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
   const U_DIFFUSE_COLOR = 'uCd';
   const U_SPECULAR_COLOR = 'uCs';
   const U_SPECULARITY = 'uSpecularity';
+  const U_COLOR = 'uColor';
   // Attribute Names
   const A_POSITION = 'aPosition';
   const A_NORMAL = 'aNormal';
-  const A_COLOR = 'aColor';
   const A_TEXTURE_COORDS = 'aTextureCoords';
-  // Varyings Names
+  // Varying Names
   const V_NORMAL = 'vNormal';
-  const V_COLOR = 'vColor';
   const V_TEXTURE_COORDS = 'vTextureCoords';
 
   const vsSource = glsl`
     // Attributes
     attribute vec4 ${A_POSITION};
     attribute vec3 ${A_NORMAL};
-    attribute vec4 ${A_COLOR};
     attribute vec2 ${A_TEXTURE_COORDS};
     // Uniforms
     uniform mat4 ${U_PROJECTION_MATRIX};
@@ -750,13 +743,11 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
     uniform mat3 ${U_TEXTURE_MATRIX};
     // Varyings
     varying highp vec3 ${V_NORMAL};
-    varying lowp vec4 ${V_COLOR};
     varying highp vec3 ${V_TEXTURE_COORDS};
     // Program
     void main(void) {
       gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
       ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0)).xyz;
-      ${V_COLOR} = ${A_COLOR};
       ${V_TEXTURE_COORDS} = ${U_TEXTURE_MATRIX} * vec3(${A_TEXTURE_COORDS}, 1);
     }
   `;
@@ -764,9 +755,9 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
   const fsSource = glsl`
     // Varyings
     varying highp vec3 ${V_NORMAL};
-    varying lowp vec4 ${V_COLOR};
     varying highp vec3 ${V_TEXTURE_COORDS};
     // Uniforms
+    uniform highp vec4 ${U_COLOR};
     uniform highp vec3 ${U_LIGHT_DIRECTION};
     uniform lowp vec3 ${U_AMBIENT_COLOR};
     uniform lowp vec3 ${U_DIFFUSE_COLOR};
@@ -781,7 +772,7 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
       lowp vec4 C = vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR} + Is * ${U_SPECULAR_COLOR}, 1.0); // Total incident light color
-      gl_FragColor = C * ${V_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
+      gl_FragColor = C * ${U_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
     }
   `;
 
@@ -791,7 +782,6 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
     program,
     attribs: {
       position: gl.getAttribLocation(program, A_POSITION),
-      color: gl.getAttribLocation(program, A_COLOR),
       normal: gl.getAttribLocation(program, A_NORMAL),
       textureCoords: gl.getAttribLocation(program, A_TEXTURE_COORDS),
     },
@@ -811,6 +801,7 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
         specularity: getUniformLocation(gl, program, U_SPECULARITY),
       },
       sampler: getUniformLocation(gl, program, U_SAMPLER),
+      color: getUniformLocation(gl, program, U_COLOR),
     },
   };
 }
