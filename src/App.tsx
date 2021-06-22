@@ -67,8 +67,8 @@ const glsl = String.raw;
 const LIGHTDIR = [0.85, 0.8, 0.75];
 
 const BLACK = [0, 0, 0];
-// const BLUE = [0, 0, 1];
-// const GREEN = [0, 1, 0];
+const BLUE = [0, 0, 1];
+const GREEN = [0, 0.75, 0];
 // const YELLOW = [1, 1, 0];
 const RED = [1, 0, 0];
 const GOLD = [1.0, 0.8, 0.5];
@@ -238,7 +238,8 @@ export default function App() {
     gl.uniform3fv(texUniforms.light.ambientColor, WHITE25);
     gl.uniform3fv(texUniforms.light.diffuseColor, WHITE);
     gl.uniform3fv(texUniforms.light.specularColor, WHITE);
-    gl.uniform1f(texUniforms.light.specularity, 8);
+    gl.uniform1f(texUniforms.light.specularity, 12);
+    gl.uniform4fv(texUniforms.color, [...GOLD, 1]);
     gl.uniformMatrix4fv(texUniforms.matrices.model, false, modelMatrix);
     gl.uniformMatrix3fv(texUniforms.matrices.texture, false, textureMatrix);
     for (let i = 0; i < 4; i++) {
@@ -252,19 +253,19 @@ export default function App() {
     gl.uniform3fv(nonTexUniforms.light.direction, LIGHTDIR);
     gl.uniform3fv(nonTexUniforms.light.ambientColor, WHITE25);
     gl.uniform3fv(nonTexUniforms.light.diffuseColor, WHITE);
-    gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
+    gl.uniform3fv(nonTexUniforms.light.specularColor, BLACK);
     const drawHand = function (height: number, width: number, length: number, angle: number) {
       const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
       gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, m);
       gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, m);
       drawWithoutTexture(makeHand(gl, height, width, length));
     };
-    gl.uniform1f(nonTexUniforms.light.specularity, 20);
-    gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
+    gl.uniform1f(nonTexUniforms.light.specularity, 1);
+    gl.uniform4fv(nonTexUniforms.color, [...BLUE, 1]);
     drawHand(0.01, 0.02, 0.6, theta); // Hours
+    gl.uniform4fv(nonTexUniforms.color, [...GREEN, 1]);
     drawHand(0.02, 0.02, 0.8, theta * 12); // Minutes
     gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
-    gl.uniform1f(nonTexUniforms.light.specularity, 0);
     drawHand(0.03, 0.01, 0.85, theta * 12 * 60); // Seconds
     // #endregion
     
@@ -272,7 +273,8 @@ export default function App() {
     gl.useProgram(nonTexProgram);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, modelMatrix);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, modelMatrix);
-    gl.uniform1f(nonTexUniforms.light.specularity, 20);
+    gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
+    gl.uniform1f(nonTexUniforms.light.specularity, 10);
     gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
     drawWithoutTexture(makeHubcap(gl, 0.03));
     // #endregion
@@ -683,8 +685,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
       highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
-      lowp vec4 C = vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR} + Is * ${U_SPECULAR_COLOR}, 1.0); // Total incident light color
-      gl_FragColor = C * ${U_COLOR};
+      gl_FragColor = ${U_COLOR} * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
     }
   `;
 
@@ -778,8 +779,7 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
       highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
-      lowp vec4 C = vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR} + Is * ${U_SPECULAR_COLOR}, 1.0); // Total incident light color
-      gl_FragColor = C * ${U_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy);
+      gl_FragColor = ${U_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy) * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
     }
   `;
 
