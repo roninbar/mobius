@@ -70,7 +70,7 @@ const BLACK = [0, 0, 0];
 // const BLUE = [0, 0, 1];
 // const GREEN = [0, 1, 0];
 // const YELLOW = [1, 1, 0];
-// const RED = [1, 0, 0];
+const RED = [1, 0, 0];
 const GOLD = [1.0, 0.8, 0.5];
 const SILVER = [0.75, 0.75, 0.75];
 // const TITANIUM = [0.125, 0.125, 0.125];
@@ -138,9 +138,9 @@ export default function App() {
     gl.cullFace(gl.BACK);
 
     let afid = requestAnimationFrame(function f(time) {
-      setTheta(time / 12000 * Math.PI);
-      // const now = new Date();
-      // setTheta(((now.getSeconds() / 60 + now.getMinutes()) / 60 + now.getHours()) / 6 * Math.PI);
+      // setTheta(time / 12000 * Math.PI);
+      const now = new Date();
+      setTheta(((now.getSeconds() / 60 + now.getMinutes()) / 60 + now.getHours()) / 6 * Math.PI);
       afid = requestAnimationFrame(f);
     });
 
@@ -253,21 +253,27 @@ export default function App() {
     gl.uniform3fv(nonTexUniforms.light.ambientColor, WHITE25);
     gl.uniform3fv(nonTexUniforms.light.diffuseColor, WHITE);
     gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
-    gl.uniform1f(nonTexUniforms.light.specularity, 20);
     const drawHand = function (height: number, width: number, length: number, angle: number) {
       const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
       gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, m);
       gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, m);
       drawWithoutTexture(makeHand(gl, height, width, length));
     };
+    gl.uniform1f(nonTexUniforms.light.specularity, 20);
+    gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
     drawHand(0.01, 0.02, 0.6, theta); // Hours
-    drawHand(0.02, 0.02, 0.8, 12 * theta); // Minutes
+    drawHand(0.02, 0.02, 0.8, theta * 12); // Minutes
+    gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
+    gl.uniform1f(nonTexUniforms.light.specularity, 0);
+    drawHand(0.03, 0.01, 0.85, theta * 12 * 60); // Seconds
     // #endregion
-
+    
     // #region Hubcap
     gl.useProgram(nonTexProgram);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, modelMatrix);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, modelMatrix);
+    gl.uniform1f(nonTexUniforms.light.specularity, 20);
+    gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
     drawWithoutTexture(makeHubcap(gl, 0.03));
     // #endregion
 
@@ -647,6 +653,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
     uniform mat4 ${U_NORMAL_MATRIX};
     uniform mat4 ${U_VIEW_MATRIX};
     uniform mat4 ${U_PROJECTION_MATRIX};
+    uniform lowp vec4 ${U_COLOR};
     // Attributes
     attribute vec4 ${A_POSITION};
     attribute vec3 ${A_NORMAL};
