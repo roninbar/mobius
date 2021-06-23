@@ -130,6 +130,8 @@ export default function App() {
 
     loadTexture(gl, gl.TEXTURE10, `${process.env.PUBLIC_URL}/texture/mobius.png`);
 
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     gl.clearDepth(1);
@@ -268,7 +270,7 @@ export default function App() {
     gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
     drawHand(0.03, 0.01, 0.85, theta * 12 * 60); // Seconds
     // #endregion
-    
+
     // #region Hubcap
     gl.useProgram(nonTexProgram);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, modelMatrix);
@@ -278,17 +280,38 @@ export default function App() {
     gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
     drawWithoutTexture(makeHubcap(gl, 0.03));
     // #endregion
-
-    // #region Back of Case
-    const m = mat4.rotateX(mat4.create(), mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]), Math.PI);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+    
+    gl.useProgram(nonTexProgram);
     gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
-    drawWithoutTexture(makeFrisbee(gl));
+    gl.uniform1f(nonTexUniforms.light.specularity, 32);
+    
+    // #region Back of Case
+    {
+      const m = mat4.rotateX(mat4.create(), mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]), Math.PI);
+      gl.useProgram(nonTexProgram);
+      gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
+      gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+      drawWithoutTexture(makeFrisbee(gl));
+    }
+    // #endregion
+    
+    // #region Outside of Rim
+    gl.useProgram(nonTexProgram);
     gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
     gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
-    gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
     drawWithoutTexture(makeRim(gl));
+    // #endregion
+    
+    // #region Front of Case (glass)
+    {
+      const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, +H]);
+      gl.useProgram(nonTexProgram);
+      gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
+      gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+      gl.uniform4fv(nonTexUniforms.color, [...WHITE, 0.125]);
+      gl.uniform1f(nonTexUniforms.light.specularity, 128);
+      drawWithoutTexture(makeFrisbee(gl));
+    }
     // #endregion
 
   }, [theta, modelMatrix]);
