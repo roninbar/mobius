@@ -112,20 +112,40 @@ export default function App() {
     }
 
     const loadAllTexturesAsync = async function () {
-      const promises: Promise<WebGLTexture>[] = [];
+      const promises: Promise<null>[] = [];
 
-      for (const which of [gl.TEXTURE20, gl.TEXTURE21, gl.TEXTURE22, gl.TEXTURE23]) {
-        promises.push(loadTextureAsync(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE20}.bmp`));
+      // Hours
+      for (const unit of [gl.TEXTURE20, gl.TEXTURE21, gl.TEXTURE22, gl.TEXTURE23]) {
+        gl.activeTexture(unit);
+        const texPiece = gl.createTexture();
+        if (!texPiece) {
+          throw new Error('Failed to create texture.');
+        }
+        gl.bindTexture(gl.TEXTURE_2D, texPiece);
+        promises.push(loadTextureAsync(gl, `${process.env.PUBLIC_URL}/texture/hours${unit - gl.TEXTURE20}.bmp`));
       }
 
-      promises.push(loadTextureAsync(gl, gl.TEXTURE10, `${process.env.PUBLIC_URL}/texture/mobius.png`));
+      // Portrait of Mobius
+      gl.activeTexture(gl.TEXTURE10);
+      const texPortrait = gl.createTexture();
+      if (!texPortrait) {
+        throw new Error('Failed to create texture.');
+      }
+      gl.bindTexture(gl.TEXTURE_2D, texPortrait);
+      promises.push(loadTextureAsync(gl, `${process.env.PUBLIC_URL}/texture/mobius.png`));
 
+      // Environment
+      gl.activeTexture(gl.TEXTURE0);
+      const texEnv = gl.createTexture();
+      if (!texEnv) {
+        throw new Error('Failed to create texture.');
+      }
       for (const axis of ['X', 'Y', 'Z']) {
         for (const sign of ['NEGATIVE', 'POSITIVE']) {
-          promises.push(loadTextureAsync(gl, gl.TEXTURE0, `https://webglfundamentals.org/webgl/resources/images/computer-history-museum/${sign.slice(0, 3).toLowerCase()}-${axis.toLowerCase()}.jpg`, {
-            kind: 'TEXTURE_CUBE_MAP',
-            target: `TEXTURE_CUBE_MAP_${sign as 'POSITIVE' | 'NEGATIVE'}_${axis as 'X' | 'Y' | 'Z'}`,
-          }));
+          gl.bindTexture(gl.TEXTURE_CUBE_MAP, texEnv);
+          promises.push(
+            loadTextureAsync(gl, `${process.env.PUBLIC_URL}/texture/env/${sign.slice(0, 3).toLowerCase()}-${axis.toLowerCase()}.jpg`, `TEXTURE_CUBE_MAP_${sign as 'POSITIVE' | 'NEGATIVE'}_${axis as 'X' | 'Y' | 'Z'}`),
+          );
         }
       }
 
@@ -169,7 +189,19 @@ export default function App() {
     loadAllTexturesAsync().then(function () {
       gl.activeTexture(gl.TEXTURE0);
       gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+
+      for (const unit of [gl.TEXTURE10, gl.TEXTURE20, gl.TEXTURE21, gl.TEXTURE22, gl.TEXTURE23]) {
+        gl.activeTexture(unit);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      }
     });
 
     let afid = requestAnimationFrame(function f(time) {
@@ -415,72 +447,20 @@ export default function App() {
 
 function loadTextureAsync(
   gl: WebGLRenderingContext,
-  which: number,
   url: string,
-  { kind, target }: {
-    kind: 'TEXTURE_2D' | 'TEXTURE_CUBE_MAP';
-    target: 'TEXTURE_2D' | `TEXTURE_CUBE_MAP_${'POSITIVE' | 'NEGATIVE'}_${'X' | 'Y' | 'Z'}`;
-  } = { kind: 'TEXTURE_2D', target: 'TEXTURE_2D' }
-): Promise<WebGLTexture> {
-  return new Promise(function (resolve, reject) {
-    const texture = gl.createTexture();
-
-    if (!texture) {
-      return reject(new Error('Failed to create texture object.'));
-    }
-
-    // Because images have to be downloaded over the internet
-    // they might take a moment until they are ready.
-    // Until then put a single pixel in the texture so we can
-    // use it immediately. When the image has finished downloading
-    // we'll update the texture with the contents of the image.
-    gl.activeTexture(which);
-    gl.bindTexture(gl[kind], texture);
-    gl.texImage2D(
-      gl[target],
-      0, // level
-      gl.RGBA, // internalFormat
-      1, // width
-      1, // height
-      0, // border
-      gl.RGBA, // format
-      gl.UNSIGNED_BYTE, // type
-      null,
-    );
-
+  target: 'TEXTURE_2D' | `TEXTURE_CUBE_MAP_${'POSITIVE' | 'NEGATIVE'}_${'X' | 'Y' | 'Z'}` = 'TEXTURE_2D'
+): Promise<null> {
+  return new Promise(function (resolve) {
+    const unit = gl.getParameter(gl.ACTIVE_TEXTURE);
+    gl.texImage2D(gl[target], 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     const image = new Image();
     image.src = url;
-    image.crossOrigin = '';
     image.addEventListener('load', function () {
-      gl.activeTexture(which);
-      gl.bindTexture(gl[kind], texture);
+      gl.activeTexture(unit);
       gl.texImage2D(gl[target], 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-      gl.texParameteri(gl[kind], gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl[kind], gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl[kind], gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-      // WebGL1 has different requirements for power of 2 images
-      // vs non power of 2 images so check if the image is a
-      // power of 2 in both dimensions.
-      if (kind === 'TEXTURE_2D' && isPowerOf2(image.width) && isPowerOf2(image.height)) {
-        // Yes, it's a power of 2. Generate mips.
-        gl.generateMipmap(gl[kind]);
-        gl.texParameteri(gl[kind], gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      } else {
-        // No, it's not a power of 2. Turn off mips and set
-        // wrapping to clamp to edge.
-        gl.texParameteri(gl[kind], gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      }
-
-      return resolve(texture);
+      return resolve(null);
     });
-
-    return texture;
   });
-}
-
-function isPowerOf2(value: number) {
-  return (value & (value - 1)) === 0;
 }
 
 function makeFrisbee(gl: WebGLRenderingContext): Actor {
@@ -963,8 +943,7 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
       highp vec3 v = reflect(vec3(0, 0, -1), n); // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
-      gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, vec3(0, 0, -1)) * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
-      // gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, v) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
+      gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, v) * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
     }
   `;
 
