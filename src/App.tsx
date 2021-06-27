@@ -1,7 +1,7 @@
 /* eslint-disable one-var */
 /* eslint-disable no-bitwise */
 
-import { mat3, mat4 } from 'gl-matrix';
+import { mat3, mat4, vec3 } from 'gl-matrix';
 import React, { MutableRefObject, useEffect, useRef, useState } from 'react';
 import './App.scss';
 
@@ -17,19 +17,19 @@ interface ProgramInfo {
       view: WebGLUniformLocation;
       model: WebGLUniformLocation;
       normal: WebGLUniformLocation;
-    },
+    };
+    color: WebGLUniformLocation;
     light: {
       direction: WebGLUniformLocation;
       ambientColor: WebGLUniformLocation;
       diffuseColor: WebGLUniformLocation;
       specularColor: WebGLUniformLocation;
       specularity: WebGLUniformLocation;
-    },
-    color: WebGLUniformLocation;
+    };
   };
 }
 
-type NonTextureMappingProgramInfo = ProgramInfo & {
+type SimpleProgramInfo = ProgramInfo & {
   attribs: {
   };
   uniforms: {
@@ -44,6 +44,12 @@ type TextureMappingProgramInfo = ProgramInfo & {
     matrices: {
       texture: WebGLUniformLocation;
     };
+    sampler: WebGLSampler;
+  };
+};
+
+type CubeMappingProgramInfo = ProgramInfo & {
+  uniforms: {
     sampler: WebGLSampler;
   };
 };
@@ -90,13 +96,14 @@ export default function App() {
   const [anchor, setAnchor] = useState<{ x: number, y: number; } | null>();
   const [modelMatrix, setModelMatrix] = useState(mat4.create());
 
-  const programWithTextureMapping: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
-  const programWithoutTextureMapping: MutableRefObject<NonTextureMappingProgramInfo | null> = useRef(null);
+  const simpleProgramInfo: MutableRefObject<SimpleProgramInfo | null> = useRef(null);
+  const textureMappingProgramInfo: MutableRefObject<TextureMappingProgramInfo | null> = useRef(null);
+  const cubeMappingProgramInfo: MutableRefObject<CubeMappingProgramInfo | null> = useRef(null);
 
   const canvas = useRef<HTMLCanvasElement>(null);
 
   // #region Initialize WebGL stuff and start the animation.
-  useEffect(() => {
+  useEffect(function () {
 
     const gl = canvas.current?.getContext('webgl');
 
@@ -104,11 +111,37 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    programWithTextureMapping.current = makeProgramWithTextureMapping(gl);
-    programWithoutTextureMapping.current = makeProgramWithoutTextureMapping(gl);
+    const loadAllTexturesAsync = async function () {
+      const promises: Promise<WebGLTexture>[] = [];
 
-    const { program: texProgram, uniforms: texUniforms } = programWithTextureMapping.current;
-    const { program: nonTexProgram, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
+      for (const which of [gl.TEXTURE20, gl.TEXTURE21, gl.TEXTURE22, gl.TEXTURE23]) {
+        promises.push(loadTextureAsync(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE20}.bmp`));
+      }
+
+      promises.push(loadTextureAsync(gl, gl.TEXTURE10, `${process.env.PUBLIC_URL}/texture/mobius.png`));
+
+      for (const axis of ['X', 'Y', 'Z']) {
+        for (const sign of ['NEGATIVE', 'POSITIVE']) {
+          promises.push(loadTextureAsync(gl, gl.TEXTURE0, `https://webglfundamentals.org/webgl/resources/images/computer-history-museum/${sign.slice(0, 3).toLowerCase()}-${axis.toLowerCase()}.jpg`, {
+            kind: 'TEXTURE_CUBE_MAP',
+            target: `TEXTURE_CUBE_MAP_${sign as 'POSITIVE' | 'NEGATIVE'}_${axis as 'X' | 'Y' | 'Z'}`,
+          }));
+        }
+      }
+
+      return Promise.all(promises);
+    };
+
+    const { program: simpleProgram, uniforms: simpleUniforms } = simpleProgramInfo.current = makeSimpleProgram(gl);
+    const { program: texProgram, uniforms: texUniforms } = textureMappingProgramInfo.current = makeTextureMappingProgram(gl);
+    const { program: cubeProgram, uniforms: cubeUniforms } = cubeMappingProgramInfo.current = makeCubeMappingProgram(gl);
+
+    gl.useProgram(simpleProgram);
+    gl.uniform3fv(simpleUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(simpleUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(simpleUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(simpleUniforms.light.specularColor, WHITE);
+    gl.uniform1f(simpleUniforms.light.specularity, 10);
 
     gl.useProgram(texProgram);
     gl.uniform3fv(texUniforms.light.direction, LIGHTDIR);
@@ -117,18 +150,12 @@ export default function App() {
     gl.uniform3fv(texUniforms.light.specularColor, WHITE);
     gl.uniform1f(texUniforms.light.specularity, 10);
 
-    gl.useProgram(nonTexProgram);
-    gl.uniform3fv(nonTexUniforms.light.direction, LIGHTDIR);
-    gl.uniform3fv(nonTexUniforms.light.ambientColor, WHITE25);
-    gl.uniform3fv(nonTexUniforms.light.diffuseColor, WHITE);
-    gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
-    gl.uniform1f(nonTexUniforms.light.specularity, 10);
-
-    for (const which of [gl.TEXTURE0, gl.TEXTURE1, gl.TEXTURE2, gl.TEXTURE3]) {
-      loadTexture(gl, which, `${process.env.PUBLIC_URL}/texture/hours${which - gl.TEXTURE0}.bmp`);
-    }
-
-    loadTexture(gl, gl.TEXTURE10, `${process.env.PUBLIC_URL}/texture/mobius.png`);
+    gl.useProgram(cubeProgram);
+    gl.uniform3fv(cubeUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(cubeUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(cubeUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(cubeUniforms.light.specularColor, WHITE);
+    gl.uniform1f(cubeUniforms.light.specularity, 10);
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -138,6 +165,12 @@ export default function App() {
     gl.clearColor(0, 0, 0, 1);
     gl.enable(gl.CULL_FACE);
     gl.cullFace(gl.BACK);
+
+    loadAllTexturesAsync().then(function () {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+      gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    });
 
     let afid = requestAnimationFrame(function f(time) {
       // setTheta(time / 12000 * Math.PI);
@@ -154,7 +187,7 @@ export default function App() {
   // #endregion
 
   // #region Render one frame.
-  useEffect(() => {
+  useEffect(function () {
 
     const gl = canvas.current?.getContext('webgl');
 
@@ -162,28 +195,33 @@ export default function App() {
       throw new Error('Failed to get a WebGL context.');
     }
 
-    if (!programWithTextureMapping.current || !programWithoutTextureMapping.current) {
+    if (!simpleProgramInfo.current || !textureMappingProgramInfo.current || !cubeMappingProgramInfo.current) {
       throw new Error('Missing shader program!');
     }
 
-    const { program: texProgram, attribs: texAttribs, uniforms: texUniforms } = programWithTextureMapping.current;
-    const { program: nonTexProgram, attribs: nonTexAttribs, uniforms: nonTexUniforms } = programWithoutTextureMapping.current;
+    const { program: simpleProgram, attribs: simpleAttribs, uniforms: simpleUniforms } = simpleProgramInfo.current;
+    const { program: texProgram, attribs: texAttribs, uniforms: texUniforms } = textureMappingProgramInfo.current;
+    const { program: cubeProgram, attribs: cubeAttribs, uniforms: cubeUniforms } = cubeMappingProgramInfo.current;
 
     const projectionMatrix = mat4.perspective(mat4.create(), Math.PI / 5, gl.canvas.width / gl.canvas.height, 0.1, 100);
     const viewMatrix = mat4.fromTranslation(mat4.create(), [0, 0, -4]);
     const textureMatrix = mat3.create();
 
+    gl.useProgram(simpleProgram);
+    gl.uniformMatrix4fv(simpleUniforms.matrices.projection, false, projectionMatrix);
+    gl.uniformMatrix4fv(simpleUniforms.matrices.view, false, viewMatrix);
+
     gl.useProgram(texProgram);
     gl.uniformMatrix4fv(texUniforms.matrices.projection, false, projectionMatrix);
     gl.uniformMatrix4fv(texUniforms.matrices.view, false, viewMatrix);
 
-    gl.useProgram(nonTexProgram);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.projection, false, projectionMatrix);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.view, false, viewMatrix);
+    gl.useProgram(cubeProgram);
+    gl.uniformMatrix4fv(cubeUniforms.matrices.projection, false, projectionMatrix);
+    gl.uniformMatrix4fv(cubeUniforms.matrices.view, false, viewMatrix);
 
     const drawWithoutTexture = function ({ topology, positionBuffer, normalBuffer, colorBuffer }: Actor) {
       try {
-        drawArrays(gl, topology, nonTexAttribs.position, positionBuffer, nonTexAttribs.normal, normalBuffer);
+        drawArrays(gl, topology, simpleAttribs.position, positionBuffer, simpleAttribs.normal, normalBuffer);
       } finally {
         if (colorBuffer) gl.deleteBuffer(colorBuffer);
         if (normalBuffer) gl.deleteBuffer(normalBuffer);
@@ -202,14 +240,23 @@ export default function App() {
       }
     };
 
+    const drawWithCubeMapping = function ({ topology, positionBuffer, normalBuffer }: Actor) {
+      try {
+        drawArrays(gl, topology, cubeAttribs.position, positionBuffer, cubeAttribs.normal, normalBuffer);
+      } finally {
+        if (normalBuffer) gl.deleteBuffer(normalBuffer);
+        if (positionBuffer) gl.deleteBuffer(positionBuffer);
+      }
+    };
+
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     gl.cullFace(gl.FRONT);
 
     // #region Inside of Rim
-    gl.useProgram(nonTexProgram);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
+    gl.useProgram(simpleProgram);
+    gl.uniformMatrix4fv(simpleUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
+    gl.uniformMatrix4fv(simpleUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
     drawWithoutTexture(makeRim(gl));
     // #endregion
 
@@ -245,72 +292,79 @@ export default function App() {
     gl.uniformMatrix4fv(texUniforms.matrices.model, false, modelMatrix);
     gl.uniformMatrix3fv(texUniforms.matrices.texture, false, textureMatrix);
     for (let i = 0; i < 4; i++) {
-      gl.uniform1i(texUniforms.sampler, i);
+      gl.uniform1i(texUniforms.sampler, 20 + i);
       drawWithTexture(makeStrip(gl, theta, i));
     }
     // #endregion
 
     // #region Hands
-    gl.useProgram(nonTexProgram);
-    gl.uniform3fv(nonTexUniforms.light.direction, LIGHTDIR);
-    gl.uniform3fv(nonTexUniforms.light.ambientColor, WHITE25);
-    gl.uniform3fv(nonTexUniforms.light.diffuseColor, WHITE);
-    gl.uniform3fv(nonTexUniforms.light.specularColor, BLACK);
+    gl.useProgram(simpleProgram);
+    gl.uniform3fv(simpleUniforms.light.direction, LIGHTDIR);
+    gl.uniform3fv(simpleUniforms.light.ambientColor, WHITE25);
+    gl.uniform3fv(simpleUniforms.light.diffuseColor, WHITE);
+    gl.uniform3fv(simpleUniforms.light.specularColor, BLACK);
     const drawHand = function (height: number, width: number, length: number, angle: number) {
       const m = mat4.rotateZ(mat4.create(), modelMatrix, -angle);
-      gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, m);
-      gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, m);
+      gl.uniformMatrix4fv(simpleUniforms.matrices.model, false, m);
+      gl.uniformMatrix4fv(simpleUniforms.matrices.normal, false, m);
       drawWithoutTexture(makeHand(gl, height, width, length));
     };
-    gl.uniform1f(nonTexUniforms.light.specularity, 1);
-    gl.uniform4fv(nonTexUniforms.color, [...BLUE, 1]);
+    gl.uniform1f(simpleUniforms.light.specularity, 1);
+    gl.uniform4fv(simpleUniforms.color, [...BLUE, 1]);
     drawHand(0.01, 0.02, 0.6, theta); // Hours
-    gl.uniform4fv(nonTexUniforms.color, [...GREEN, 1]);
+    gl.uniform4fv(simpleUniforms.color, [...GREEN, 1]);
     drawHand(0.02, 0.02, 0.8, theta * 12); // Minutes
-    gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
+    gl.uniform4fv(simpleUniforms.color, [...RED, 1]);
     drawHand(0.03, 0.01, 0.85, theta * 12 * 60); // Seconds
     // #endregion
 
     // #region Hubcap
-    gl.useProgram(nonTexProgram);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, modelMatrix);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, modelMatrix);
-    gl.uniform3fv(nonTexUniforms.light.specularColor, WHITE);
-    gl.uniform1f(nonTexUniforms.light.specularity, 10);
-    gl.uniform4fv(nonTexUniforms.color, [...RED, 1]);
+    gl.useProgram(simpleProgram);
+    gl.uniformMatrix4fv(simpleUniforms.matrices.model, false, modelMatrix);
+    gl.uniformMatrix4fv(simpleUniforms.matrices.normal, false, modelMatrix);
+    gl.uniform3fv(simpleUniforms.light.specularColor, WHITE);
+    gl.uniform1f(simpleUniforms.light.specularity, 10);
+    gl.uniform4fv(simpleUniforms.color, [...RED, 1]);
     drawWithoutTexture(makeHubcap(gl, 0.03));
     // #endregion
-    
-    gl.useProgram(nonTexProgram);
-    gl.uniform4fv(nonTexUniforms.color, [...GOLD, 1]);
-    gl.uniform1f(nonTexUniforms.light.specularity, 32);
-    
+
+    gl.useProgram(simpleProgram);
+    gl.uniform4fv(simpleUniforms.color, [...GOLD, 1]);
+    gl.uniform1f(simpleUniforms.light.specularity, 32);
+
     // #region Back of Case
     {
       const m = mat4.rotateX(mat4.create(), mat4.translate(mat4.create(), modelMatrix, [0, 0, -H]), Math.PI);
-      gl.useProgram(nonTexProgram);
-      gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
-      gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
+      gl.useProgram(simpleProgram);
+      gl.uniformMatrix4fv(simpleUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
+      gl.uniformMatrix4fv(simpleUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
       drawWithoutTexture(makeFrisbee(gl));
     }
     // #endregion
-    
+
     // #region Outside of Rim
-    gl.useProgram(nonTexProgram);
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, [1.2, 1.2, 1]));
-    gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, [1 / 1.2, 1 / 1.2, 1]));
-    drawWithoutTexture(makeRim(gl));
+    {
+      const scale = vec3.fromValues(1.2, 1.2, 1);
+      gl.useProgram(simpleProgram);
+      gl.uniformMatrix4fv(simpleUniforms.matrices.model, false, mat4.scale(mat4.create(), modelMatrix, scale));
+      gl.uniformMatrix4fv(simpleUniforms.matrices.normal, false, mat4.scale(mat4.create(), modelMatrix, vec3.inverse(vec3.create(), scale)));
+      drawWithoutTexture(makeRim(gl));
+    }
     // #endregion
-    
+
     // #region Front of Case (glass)
     {
       const m = mat4.translate(mat4.create(), modelMatrix, [0, 0, +H]);
-      gl.useProgram(nonTexProgram);
-      gl.uniformMatrix4fv(nonTexUniforms.matrices.model, false, mat4.scale(mat4.create(), m, [1.2, 1.2, 0.24]));
-      gl.uniformMatrix4fv(nonTexUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, [1 / 1.2, 1 / 1.2, 1 / 0.24]));
-      gl.uniform4fv(nonTexUniforms.color, [...WHITE, 0.125]);
-      gl.uniform1f(nonTexUniforms.light.specularity, 128);
-      drawWithoutTexture(makeFrisbee(gl));
+      const scale = vec3.fromValues(1.2, 1.2, 0.24);
+      gl.useProgram(cubeProgram);
+      gl.uniformMatrix4fv(cubeUniforms.matrices.model, false, mat4.scale(mat4.create(), m, scale));
+      gl.uniformMatrix4fv(cubeUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, vec3.inverse(vec3.create(), scale)));
+      gl.uniform4fv(cubeUniforms.color, [...WHITE, 0.125]);
+      gl.uniform1f(cubeUniforms.light.specularity, 128);
+      gl.uniform1i(cubeUniforms.sampler, 0);
+      // const { topology, positionBuffer, normalBuffer } = makeFrisbee(gl);
+      // drawArrays(gl, topology, cubeAttribs.position, positionBuffer, cubeAttribs.normal, normalBuffer);
+      drawWithCubeMapping(makeFrisbee(gl));
     }
     // #endregion
 
@@ -359,53 +413,70 @@ export default function App() {
   );
 }
 
-function loadTexture(gl: WebGLRenderingContext, which: number, url: string) {
-  const texture = gl.createTexture();
+function loadTextureAsync(
+  gl: WebGLRenderingContext,
+  which: number,
+  url: string,
+  { kind, target }: {
+    kind: 'TEXTURE_2D' | 'TEXTURE_CUBE_MAP';
+    target: 'TEXTURE_2D' | `TEXTURE_CUBE_MAP_${'POSITIVE' | 'NEGATIVE'}_${'X' | 'Y' | 'Z'}`;
+  } = { kind: 'TEXTURE_2D', target: 'TEXTURE_2D' }
+): Promise<WebGLTexture> {
+  return new Promise(function (resolve, reject) {
+    const texture = gl.createTexture();
 
-  // Because images have to be downloaded over the internet
-  // they might take a moment until they are ready.
-  // Until then put a single pixel in the texture so we can
-  // use it immediately. When the image has finished downloading
-  // we'll update the texture with the contents of the image.
-  gl.activeTexture(which);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0, // level
-    gl.RGBA,
-    1, // width
-    1, // height
-    0, // border
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    new Uint8Array([255, 255, 255, 255]), // opaque white
-  );
-
-  const image = new Image();
-  image.onload = () => {
-    gl.activeTexture(which);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-    // WebGL1 has different requirements for power of 2 images
-    // vs non power of 2 images so check if the image is a
-    // power of 2 in both dimensions.
-    if (isPowerOf2(image.width) && isPowerOf2(image.height)) {
-      // Yes, it's a power of 2. Generate mips.
-      gl.generateMipmap(gl.TEXTURE_2D);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    } else {
-      // No, it's not a power of 2. Turn off mips and set
-      // wrapping to clamp to edge.
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    if (!texture) {
+      return reject(new Error('Failed to create texture object.'));
     }
-  };
-  image.src = url;
 
-  return texture;
+    // Because images have to be downloaded over the internet
+    // they might take a moment until they are ready.
+    // Until then put a single pixel in the texture so we can
+    // use it immediately. When the image has finished downloading
+    // we'll update the texture with the contents of the image.
+    gl.activeTexture(which);
+    gl.bindTexture(gl[kind], texture);
+    gl.texImage2D(
+      gl[target],
+      0, // level
+      gl.RGBA, // internalFormat
+      1, // width
+      1, // height
+      0, // border
+      gl.RGBA, // format
+      gl.UNSIGNED_BYTE, // type
+      null,
+    );
+
+    const image = new Image();
+    image.src = url;
+    image.crossOrigin = '';
+    image.addEventListener('load', function () {
+      gl.activeTexture(which);
+      gl.bindTexture(gl[kind], texture);
+      gl.texImage2D(gl[target], 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.texParameteri(gl[kind], gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl[kind], gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl[kind], gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      // WebGL1 has different requirements for power of 2 images
+      // vs non power of 2 images so check if the image is a
+      // power of 2 in both dimensions.
+      if (kind === 'TEXTURE_2D' && isPowerOf2(image.width) && isPowerOf2(image.height)) {
+        // Yes, it's a power of 2. Generate mips.
+        gl.generateMipmap(gl[kind]);
+        gl.texParameteri(gl[kind], gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      } else {
+        // No, it's not a power of 2. Turn off mips and set
+        // wrapping to clamp to edge.
+        gl.texParameteri(gl[kind], gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      }
+
+      return resolve(texture);
+    });
+
+    return texture;
+  });
 }
 
 function isPowerOf2(value: number) {
@@ -654,7 +725,7 @@ function unbindAttribute(gl: WebGLRenderingContext, attrib: number) {
   gl.disableVertexAttribArray(attrib);
 }
 
-function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTextureMappingProgramInfo {
+function makeSimpleProgram(gl: WebGLRenderingContext): SimpleProgramInfo {
   // Uniform Names
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_VIEW_MATRIX = 'uViewMatrix';
@@ -739,7 +810,7 @@ function makeProgramWithoutTextureMapping(gl: WebGLRenderingContext): NonTexture
   };
 }
 
-function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappingProgramInfo {
+function makeTextureMappingProgram(gl: WebGLRenderingContext): TextureMappingProgramInfo {
   // Uniform Names
   const U_PROJECTION_MATRIX = 'uProjectionMatrix';
   const U_VIEW_MATRIX = 'uViewMatrix';
@@ -832,6 +903,95 @@ function makeProgramWithTextureMapping(gl: WebGLRenderingContext): TextureMappin
       },
       sampler: getUniformLocation(gl, program, U_SAMPLER),
       color: getUniformLocation(gl, program, U_COLOR),
+    },
+  };
+}
+
+function makeCubeMappingProgram(gl: WebGLRenderingContext) {
+  // Uniform Names
+  const U_PROJECTION_MATRIX = 'uProjectionMatrix';
+  const U_VIEW_MATRIX = 'uViewMatrix';
+  const U_MODEL_MATRIX = 'uModelMatrix';
+  const U_NORMAL_MATRIX = 'uNormalMatrix';
+  const U_SAMPLER = 'uSampler';
+  const U_LIGHT_DIRECTION = 'uLightDirection';
+  const U_AMBIENT_COLOR = 'uCa';
+  const U_DIFFUSE_COLOR = 'uCd';
+  const U_SPECULAR_COLOR = 'uCs';
+  const U_SPECULARITY = 'uSpecularity';
+  const U_COLOR = 'uColor';
+  // Attribute Names
+  const A_POSITION = 'aPosition';
+  const A_NORMAL = 'aNormal';
+  // Varying Names
+  const V_NORMAL = 'vNormal';
+
+  const vsSource = glsl`
+    // Uniforms
+    uniform mat4 ${U_PROJECTION_MATRIX};
+    uniform mat4 ${U_VIEW_MATRIX};
+    uniform mat4 ${U_MODEL_MATRIX};
+    uniform mat4 ${U_NORMAL_MATRIX};
+    // Attributes
+    attribute vec4 ${A_POSITION};
+    attribute vec3 ${A_NORMAL};
+    // Varyings
+    varying highp vec3 ${V_NORMAL};
+    // Program
+    void main(void) {
+      ${V_NORMAL} = normalize(${U_VIEW_MATRIX} * ${U_NORMAL_MATRIX} * vec4(${A_NORMAL}, 0)).xyz;
+      gl_Position = ${U_PROJECTION_MATRIX} * ${U_VIEW_MATRIX} * ${U_MODEL_MATRIX} * ${A_POSITION};
+    }
+  `;
+
+  const fsSource = glsl`
+    // Uniforms
+    uniform highp vec4 ${U_COLOR};
+    uniform highp vec3 ${U_LIGHT_DIRECTION};
+    uniform lowp vec3 ${U_AMBIENT_COLOR};
+    uniform lowp vec3 ${U_DIFFUSE_COLOR};
+    uniform lowp vec3 ${U_SPECULAR_COLOR};
+    uniform lowp float ${U_SPECULARITY};
+    uniform samplerCube ${U_SAMPLER};
+    // Varyings
+    varying highp vec3 ${V_NORMAL};
+    // Program
+    void main(void) {
+      highp vec3 n = normalize(${V_NORMAL});
+      // Apply lighting
+      highp vec3 u = normalize(${U_LIGHT_DIRECTION}); // Light direction
+      highp vec3 v = reflect(vec3(0, 0, -1), n); // Reflection direction
+      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
+      lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
+      gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, vec3(0, 0, -1)) * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
+      // gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, v) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
+    }
+  `;
+
+  const program = buildProgram(gl, vsSource, fsSource);
+
+  return {
+    program,
+    attribs: {
+      position: gl.getAttribLocation(program, A_POSITION),
+      normal: gl.getAttribLocation(program, A_NORMAL),
+    },
+    uniforms: {
+      matrices: {
+        projection: getUniformLocation(gl, program, U_PROJECTION_MATRIX),
+        view: getUniformLocation(gl, program, U_VIEW_MATRIX),
+        model: getUniformLocation(gl, program, U_MODEL_MATRIX),
+        normal: getUniformLocation(gl, program, U_NORMAL_MATRIX),
+      },
+      color: getUniformLocation(gl, program, U_COLOR),
+      light: {
+        direction: getUniformLocation(gl, program, U_LIGHT_DIRECTION),
+        ambientColor: getUniformLocation(gl, program, U_AMBIENT_COLOR),
+        diffuseColor: getUniformLocation(gl, program, U_DIFFUSE_COLOR),
+        specularColor: getUniformLocation(gl, program, U_SPECULAR_COLOR),
+        specularity: getUniformLocation(gl, program, U_SPECULARITY),
+      },
+      sampler: getUniformLocation(gl, program, U_SAMPLER),
     },
   };
 }
