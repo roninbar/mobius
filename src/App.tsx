@@ -21,8 +21,6 @@ interface ProgramInfo {
     color: WebGLUniformLocation;
     light: {
       direction: WebGLUniformLocation;
-      ambientColor: WebGLUniformLocation;
-      diffuseColor: WebGLUniformLocation;
       specularColor: WebGLUniformLocation;
       specularity: WebGLUniformLocation;
     };
@@ -33,6 +31,10 @@ type SimpleProgramInfo = ProgramInfo & {
   attribs: {
   };
   uniforms: {
+    light: {
+      ambientColor: WebGLUniformLocation;
+      diffuseColor: WebGLUniformLocation;
+    };
   };
 };
 
@@ -43,6 +45,10 @@ type TextureMappingProgramInfo = ProgramInfo & {
   uniforms: {
     matrices: {
       texture: WebGLUniformLocation;
+    };
+    light: {
+      ambientColor: WebGLUniformLocation;
+      diffuseColor: WebGLUniformLocation;
     };
     sampler: WebGLSampler;
   };
@@ -172,8 +178,6 @@ export default function App() {
 
     gl.useProgram(cubeProgram);
     gl.uniform3fv(cubeUniforms.light.direction, LIGHTDIR);
-    gl.uniform3fv(cubeUniforms.light.ambientColor, WHITE25);
-    gl.uniform3fv(cubeUniforms.light.diffuseColor, WHITE);
     gl.uniform3fv(cubeUniforms.light.specularColor, WHITE);
     gl.uniform1f(cubeUniforms.light.specularity, 10);
 
@@ -343,11 +347,11 @@ export default function App() {
     };
     gl.uniform1f(simpleUniforms.light.specularity, 1);
     gl.uniform4fv(simpleUniforms.color, [...BLUE, 1]);
-    drawHand(0.01, 0.02, 0.6, theta); // Hours
+    drawHand(0.03, 0.02, 0.6, theta); // Hours
     gl.uniform4fv(simpleUniforms.color, [...GREEN, 1]);
-    drawHand(0.02, 0.02, 0.8, theta * 12); // Minutes
+    drawHand(0.06, 0.02, 0.8, theta * 12); // Minutes
     gl.uniform4fv(simpleUniforms.color, [...RED, 1]);
-    drawHand(0.03, 0.01, 0.85, theta * 12 * 60); // Seconds
+    drawHand(0.09, 0.01, 0.85, theta * 12 * 60); // Seconds
     // #endregion
 
     // #region Hubcap
@@ -357,7 +361,7 @@ export default function App() {
     gl.uniform3fv(simpleUniforms.light.specularColor, WHITE);
     gl.uniform1f(simpleUniforms.light.specularity, 10);
     gl.uniform4fv(simpleUniforms.color, [...RED, 1]);
-    drawWithoutTexture(makeHubcap(gl, 0.03));
+    drawWithoutTexture(makeHubcap(gl, 0.12));
     // #endregion
 
     gl.useProgram(simpleProgram);
@@ -391,11 +395,9 @@ export default function App() {
       gl.useProgram(cubeProgram);
       gl.uniformMatrix4fv(cubeUniforms.matrices.model, false, mat4.scale(mat4.create(), m, scale));
       gl.uniformMatrix4fv(cubeUniforms.matrices.normal, false, mat4.scale(mat4.create(), m, vec3.inverse(vec3.create(), scale)));
-      gl.uniform4fv(cubeUniforms.color, [...WHITE, 0.125]);
+      gl.uniform4fv(cubeUniforms.color, [...WHITE, 0.25]);
       gl.uniform1f(cubeUniforms.light.specularity, 128);
       gl.uniform1i(cubeUniforms.sampler, 0);
-      // const { topology, positionBuffer, normalBuffer } = makeFrisbee(gl);
-      // drawArrays(gl, topology, cubeAttribs.position, positionBuffer, cubeAttribs.normal, normalBuffer);
       drawWithCubeMapping(makeFrisbee(gl));
     }
     // #endregion
@@ -754,10 +756,10 @@ function makeSimpleProgram(gl: WebGLRenderingContext): SimpleProgramInfo {
     varying highp vec3 ${V_NORMAL};
     // Program
     void main(void) {
-      // Apply lighting
+      highp vec3 n = normalize(${V_NORMAL});
       highp vec3 u = normalize(${U_LIGHT_DIRECTION});
-      highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
-      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
+      highp vec3 v = -reflect(u, n); // Reflection direction
+      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, n)); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
       gl_FragColor = ${U_COLOR} * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
     }
@@ -938,12 +940,11 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
     // Program
     void main(void) {
       highp vec3 n = normalize(${V_NORMAL});
-      // Apply lighting
-      highp vec3 u = normalize(${U_LIGHT_DIRECTION}); // Light direction
-      highp vec3 v = reflect(vec3(0, 0, -1), n); // Reflection direction
-      lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
+      highp vec3 u = normalize(${U_LIGHT_DIRECTION});
+      highp vec3 v = -reflect(u, n);
+      highp vec3 w = -reflect(vec3(0, 0, 1), n);
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
-      gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, v) * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
+      gl_FragColor = ${U_COLOR} * textureCube(${U_SAMPLER}, w) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
     }
   `;
 
@@ -965,8 +966,6 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
       color: getUniformLocation(gl, program, U_COLOR),
       light: {
         direction: getUniformLocation(gl, program, U_LIGHT_DIRECTION),
-        ambientColor: getUniformLocation(gl, program, U_AMBIENT_COLOR),
-        diffuseColor: getUniformLocation(gl, program, U_DIFFUSE_COLOR),
         specularColor: getUniformLocation(gl, program, U_SPECULAR_COLOR),
         specularity: getUniformLocation(gl, program, U_SPECULARITY),
       },
@@ -977,11 +976,9 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
 
 function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: string) {
   const program = gl.createProgram();
-
   if (!program) {
     throw new Error('Failed to create program.');
   }
-
   gl.attachShader(program, buildShader(gl, gl.VERTEX_SHADER, vsSource));
   gl.attachShader(program, buildShader(gl, gl.FRAGMENT_SHADER, fsSource));
   gl.linkProgram(program);
@@ -990,7 +987,6 @@ function buildProgram(gl: WebGLRenderingContext, vsSource: string, fsSource: str
     gl.deleteProgram(program);
     throw new Error(message);
   }
-
   return program;
 }
 
