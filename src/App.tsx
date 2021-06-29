@@ -76,16 +76,14 @@ interface Actor {
 
 const glsl = String.raw;
 
-const LIGHTDIR = [0.85, 0.8, 0.75];
+const LIGHTDIR = [0.85, 1.0, 0.75];
 
 const BLACK = [0, 0, 0];
 const BLUE = [0, 0, 1];
 const GREEN = [0, 0.75, 0];
-// const YELLOW = [1, 1, 0];
 const RED = [1, 0, 0];
 const GOLD = [1.0, 0.8, 0.5];
 const SILVER = [0.75, 0.75, 0.75];
-// const TITANIUM = [0.125, 0.125, 0.125];
 const WHITE = [1, 1, 1];
 const WHITE25 = [0.25, 0.25, 0.25];
 const WHITE50 = [0.5, 0.5, 0.5];
@@ -118,7 +116,7 @@ export default function App() {
     }
 
     const loadAllTexturesAsync = async function () {
-      const promises: Promise<null>[] = [];
+      const promises: Promise<void>[] = [];
 
       // Hours
       for (const unit of [gl.TEXTURE20, gl.TEXTURE21, gl.TEXTURE22, gl.TEXTURE23]) {
@@ -451,16 +449,15 @@ function loadTextureAsync(
   gl: WebGLRenderingContext,
   url: string,
   target: 'TEXTURE_2D' | `TEXTURE_CUBE_MAP_${'POSITIVE' | 'NEGATIVE'}_${'X' | 'Y' | 'Z'}` = 'TEXTURE_2D'
-): Promise<null> {
+): Promise<void> {
   return new Promise(function (resolve) {
     const unit = gl.getParameter(gl.ACTIVE_TEXTURE);
-    gl.texImage2D(gl[target], 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     const image = new Image();
     image.src = url;
     image.addEventListener('load', function () {
       gl.activeTexture(unit);
       gl.texImage2D(gl[target], 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-      return resolve(null);
+      return resolve();
     });
   });
 }
