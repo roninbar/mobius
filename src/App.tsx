@@ -924,6 +924,8 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
   `;
 
   const fsSource = glsl`
+    #define PI 3.1415926538
+
     // Uniforms
     uniform highp vec4 ${U_COLOR};
     uniform highp vec3 ${U_LIGHT_DIRECTION};
@@ -940,10 +942,9 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
       highp vec3 u = normalize(${U_LIGHT_DIRECTION});
       highp vec3 v = -reflect(u, n);
       highp vec3 w = -reflect(vec3(0, 0, 1), n);
-      lowp float Ir = 1.0 - pow(max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * n.z), 10.0); // Reflection intensity
+      lowp float Ir = 1.0 - pow(max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * n.z), 32.0); // Reflection intensity
       lowp float Is = v.z < 0.0 ? 0.0 : pow(v.z, ${U_SPECULARITY}); // Specular intensity
       gl_FragColor = Ir * ${U_COLOR} * textureCube(${U_SAMPLER}, w) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
-
     }
   `;
 
