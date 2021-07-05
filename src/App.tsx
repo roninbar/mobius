@@ -76,7 +76,7 @@ interface Actor {
 
 const glsl = String.raw;
 
-const LIGHTDIR = [0.85, 1.0, 0.75];
+const LIGHTDIR = vec3.normalize(vec3.create(), vec3.fromValues(0.85, 1.0, 0.75));
 
 const BLACK = [0, 0, 0];
 const BLUE = [0, 0, 1];
@@ -722,7 +722,7 @@ function makeSimpleProgram(gl: WebGLRenderingContext): SimpleProgramInfo {
   // Varying Names
   const V_NORMAL = 'vNormal';
 
-  const vsSource = glsl`
+  const glslVertex = glsl`
     // Uniforms
     uniform mat4 ${U_MODEL_MATRIX};
     uniform mat4 ${U_NORMAL_MATRIX};
@@ -741,7 +741,7 @@ function makeSimpleProgram(gl: WebGLRenderingContext): SimpleProgramInfo {
     }
   `;
 
-  const fsSource = glsl`
+  const glslFragment = glsl`
     // Uniforms
     uniform highp vec3 ${U_LIGHT_DIRECTION};
     uniform lowp vec3 ${U_AMBIENT_COLOR};
@@ -754,7 +754,7 @@ function makeSimpleProgram(gl: WebGLRenderingContext): SimpleProgramInfo {
     // Program
     void main(void) {
       highp vec3 n = normalize(${V_NORMAL});
-      highp vec3 u = normalize(${U_LIGHT_DIRECTION});
+      highp vec3 u = ${U_LIGHT_DIRECTION};
       highp vec3 v = -reflect(u, n); // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, n)); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
@@ -762,7 +762,7 @@ function makeSimpleProgram(gl: WebGLRenderingContext): SimpleProgramInfo {
     }
   `;
 
-  const program = buildProgram(gl, vsSource, fsSource);
+  const program = buildProgram(gl, glslVertex, glslFragment);
 
   return {
     program,
@@ -811,7 +811,7 @@ function makeTextureMappingProgram(gl: WebGLRenderingContext): TextureMappingPro
   const V_NORMAL = 'vNormal';
   const V_TEXTURE_COORDS = 'vTextureCoords';
 
-  const vsSource = glsl`
+  const glslVertex = glsl`
     // Attributes
     attribute vec4 ${A_POSITION};
     attribute vec3 ${A_NORMAL};
@@ -833,7 +833,7 @@ function makeTextureMappingProgram(gl: WebGLRenderingContext): TextureMappingPro
     }
   `;
 
-  const fsSource = glsl`
+  const glslFragment = glsl`
     // Varyings
     varying highp vec3 ${V_NORMAL};
     varying highp vec3 ${V_TEXTURE_COORDS};
@@ -848,15 +848,16 @@ function makeTextureMappingProgram(gl: WebGLRenderingContext): TextureMappingPro
     // Program
     void main(void) {
       // Apply lighting
-      highp vec3 u = normalize(${U_LIGHT_DIRECTION}); // Light direction
-      highp vec3 v = 2.0 * dot(u, ${V_NORMAL}) * ${V_NORMAL} - u; // Reflection direction
+      highp vec3 n = normalize(${V_NORMAL});
+      highp vec3 u = ${U_LIGHT_DIRECTION}; // Light direction
+      highp vec3 v = -reflect(u, n); // Reflection direction
       lowp float Id = max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * dot(u, ${V_NORMAL})); // Diffuse intensity
       lowp float Is = v[2] < 0.0 ? 0.0 : pow(v[2], ${U_SPECULARITY}); // Specular intensity
       gl_FragColor = ${U_COLOR} * texture2D(${U_SAMPLER}, ${V_TEXTURE_COORDS}.xy) * vec4(${U_AMBIENT_COLOR} + Id * ${U_DIFFUSE_COLOR}, 1.0) + Is * vec4(${U_SPECULAR_COLOR}, 1.0);
     }
   `;
 
-  const program = buildProgram(gl, vsSource, fsSource);
+  const program = buildProgram(gl, glslVertex, glslFragment);
 
   return {
     program,
@@ -905,7 +906,7 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
   // Varying Names
   const V_NORMAL = 'vNormal';
 
-  const vsSource = glsl`
+  const glslVertex = glsl`
     // Uniforms
     uniform mat4 ${U_PROJECTION_MATRIX};
     uniform mat4 ${U_VIEW_MATRIX};
@@ -923,7 +924,7 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
     }
   `;
 
-  const fsSource = glsl`
+  const glslFragment = glsl`
     #define PI 3.1415926538
 
     // Uniforms
@@ -939,7 +940,7 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
     // Program
     void main(void) {
       highp vec3 n = normalize(${V_NORMAL});
-      highp vec3 u = normalize(${U_LIGHT_DIRECTION});
+      highp vec3 u = ${U_LIGHT_DIRECTION};
       highp vec3 v = -reflect(u, n);
       highp vec3 w = -reflect(vec3(0, 0, 1), n);
       lowp float Ir = 1.0 - pow(max(0.0, (gl_FrontFacing ? +1.0 : -1.0) * n.z), 32.0); // Reflection intensity
@@ -948,7 +949,7 @@ function makeCubeMappingProgram(gl: WebGLRenderingContext) {
     }
   `;
 
-  const program = buildProgram(gl, vsSource, fsSource);
+  const program = buildProgram(gl, glslVertex, glslFragment);
 
   return {
     program,
