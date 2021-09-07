@@ -431,6 +431,7 @@ export default function App() {
   return (
     <div className="App">
       <header className="App-header">
+        <h2>M&ouml;bius Clock</h2>
         <canvas
           width="768px"
           height="768px"
@@ -439,7 +440,7 @@ export default function App() {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         />
-        <p>M&ouml;bius Clock</p>
+        <p>Use your mouse or touch to roll the clock around.</p>
       </header>
     </div>
   );
