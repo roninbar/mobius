@@ -1,14 +1,7 @@
-import React from 'react'
-import ReactDOM from 'react-dom'
-import App from './App'
-import './index.scss'
-
-// You need bootstrap? $ yarn add bootstrap
-// See: https://create-react-app.dev/docs/adding-bootstrap
-// import 'bootstrap/dist/css/bootstrap.css';
-
-// Single-page application (SPA)
-ReactDOM.render(<App />, document.getElementById('root'))
+import React from 'react';
+import ReactDOM, { hydrate, render } from 'react-dom';
+import App from './App';
+import './index.scss';
 
 // If you want to Pre-render with react-snap
 // Step 1: install $ yarn add --dev react-snap
@@ -16,20 +9,25 @@ ReactDOM.render(<App />, document.getElementById('root'))
 // Step 3: Add to package.json: "reactSnap":{"inlineCss":true}
 // Step 3: replace to the script below.
 
-/*
-import { hydrate, render } from 'react-dom'
-import * as serviceWorker from './serviceWorker'
+import * as serviceWorker from './serviceWorker';
 
-const rootElement = document.getElementById('root')
+// You need bootstrap? $ yarn add bootstrap
+// See: https://create-react-app.dev/docs/adding-bootstrap
+// import 'bootstrap/dist/css/bootstrap.css';
+
+// Single-page application (SPA)
+ReactDOM.render(<App />, document.getElementById('root'));
+
+const rootElement = document.getElementById('root');
 if (rootElement && rootElement!.hasChildNodes()) {
-  hydrate(<AppRouter />, rootElement)
+  hydrate(<App />, rootElement);
 
   // Precache - set to 'register' once you Pre-render
   // If you want your app to work offline and load faster, you can change
   // unregister() to register() below. Note this comes with some pitfalls.
   // Learn more about service workers: http://bit.ly/CRA-PWA
-  serviceWorker.register()
+  serviceWorker.register();
 } else {
-  render(<AppRouter />, rootElement)
+  render(<App />, rootElement);
 }
-*/
+
