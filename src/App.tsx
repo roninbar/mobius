@@ -440,7 +440,7 @@ export default function App() {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         />
-        <p>Use your mouse or touch to roll the clock around.</p>
+        <p>Use mouse or touch to roll the clock around.</p>
       </header>
     </div>
   );
@@ -449,7 +449,7 @@ export default function App() {
 function loadTextureAsync(
   gl: WebGLRenderingContext,
   url: string,
-  target: 'TEXTURE_2D' | `TEXTURE_CUBE_MAP_${'POSITIVE' | 'NEGATIVE'}_${'X' | 'Y' | 'Z'}` = 'TEXTURE_2D'
+  target: `TEXTURE_CUBE_MAP_${'NEGATIVE' | 'POSITIVE'}_${'X' | 'Y' | 'Z'}` | 'TEXTURE_2D' = 'TEXTURE_2D',
 ): Promise<void> {
   return new Promise(function (resolve) {
     const unit = gl.getParameter(gl.ACTIVE_TEXTURE);
