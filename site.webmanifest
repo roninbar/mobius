@@ -2,6 +2,7 @@
     "name": "Mobius Clock",
     "short_name": "mobius",
     "description": "Mobius Clock",
+    "scope": "/mobius",
     "start_url": "/mobius",
     "icons": [
         {
